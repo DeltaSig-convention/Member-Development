@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#032e24" />
+    <title>Member Development · Delta Sigma Phi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Lato:wght@400;700&display=swap" rel="stylesheet" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body { margin: 0; background: #0e0e0e; -webkit-font-smoothing: antialiased; }
+      p { margin: 0; }
+      button, select, input { font: inherit; }
+      button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid #E9B320; outline-offset: 2px; }
+      @keyframes celebIn { 0% { opacity: 0; transform: scale(0.7) } 50% { transform: scale(1.06) } 100% { opacity: 1; transform: scale(1) } }
+      @keyframes glow { 0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--gc, #E9B320) 30%, transparent) } 50% { box-shadow: 0 0 22px color-mix(in srgb, var(--gc, #E9B320) 60%, transparent) } }
+      @keyframes slideUp { 0% { opacity: 0; transform: translateY(18px) } 100% { opacity: 1; transform: translateY(0) } }
+      @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+      @keyframes fillBar { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+      @keyframes countUp { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
