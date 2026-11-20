@@ -72,8 +72,17 @@ Salesforce stays the source of truth. The dashboard only reads.
 3. **Multi-year terms are one record.** Andrew's Philanthropy Chairman role is a single 24-month record. The engine splits it into two terms. `Latest_Reconfirmation__c` may be the cleaner signal — Tyler's call.
 4. **Staff attendance is recorded the same way as member attendance,** separated only by `Attendee_Type__c`. Any Flow must filter on it or staff will earn badges.
 
+## Findings from the Quincy Elliott pull (Nov 20)
+
+5. **Our most involved undergrad earns 100 XP.** Quincy attended LI, CA, CEI, LEAD Weekend and Day of Service, but most badge actions are self-reported, and Level III badges need Levels I and II first. Until the forms exist, he holds the prerequisites for three Level III badges and zero badges. The proposal switch (`progxp=1`) awards XP for program attendance on its own, which takes him to 675 XP (Silver).
+6. **LEAD Weekend isn't mapped to any badge action.** It's an HQ program with its own program type (`LEAD Weekend`).
+7. **No officer roles on record.** His IFC presidency is a campus role, so it would arrive through the self-report form (Active Learner: "hold a leadership position in a campus organization"). Whether he holds a chapter office isn't in Salesforce.
+8. **Award date vs. membership date.** Beta Mu won Chapter of Distinction on Jan 13, 2024, two days before Quincy's Active Member date (Jan 15) and three months after his New Member date (Oct 15, 2023). Decide whether the award window starts at New Member or Active Member.
+9. **Registered but didn't attend.** He registered for the 2025 Convention and didn't attend. The engine now counts "Convention Bound" only for an upcoming registration or an attended Convention.
+
 ## Open questions
 
 - What field marks Foundation **Society** membership? `Lifetime_Level__c` is null for Andrew; confirm it's the right field or name the correct one.
 - Do the giving fields on Contact include Foundation gifts, Fraternity gifts, or both?
+- Featured programs and challenges: see `docs/CONTENT_MODEL.md` for the proposed `Gamification_Content__c` object.
 - Self-report statuses: should Level I submissions write as `approved` directly, with Level II/III starting as `pending`?

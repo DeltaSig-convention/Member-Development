@@ -273,20 +273,79 @@ export const REWARDS = [
   { id: "r5", name: "Convention Registration Discount", cost: 1000, cat: "Programs" },
 ];
 
-/* Featured program in the hero. Swap seasonally. */
-export const HERO = {
-  eyebrow: "Featured Program",
-  title: "Convince the World Week 2027",
-  sub: "The biggest XP week of the year. Show up for every pillar, April 11–17.",
-  url: "https://deltasig.org/embrace-service",
-  cta: "Learn more",
-};
+/* ════════════════════════════════════════════════════════════════
+   CONTENT THAT CHANGES DURING THE YEAR
 
-/* Challenges are Salesforce Event records of type "Timed Challenge" (December build).
-   Until then they live here. Progress counts actions dated inside the window. */
+   Three kinds of content reach a member's dashboard:
+
+   1. PERSONAL (automated) — Up Next, badge progress, challenge progress,
+      XP. Calculated from the member's own Salesforce records. Nobody
+      edits these per person; HQ edits the rules above once.
+   2. ORG-WIDE (scheduled) — featured programs and challenges that every
+      member sees between a start and end date.
+   3. TARGETED (scheduled + audience) — same as org-wide, but only shown
+      to members who match an audience rule (undergrads who haven't
+      attended CA, alumni, specific chapters…).
+
+   Today these live in this file. In production they become Salesforce
+   records HQ staff create and schedule (see docs/CONTENT_MODEL.md).
+
+   AUDIENCE RULES (all optional; every rule listed must match):
+     status:      "undergrad" | "alumni" | "all"
+     notAttended: a program type, or "convention" — hides it from people who've done it
+     attended:    a program type, or "convention" — only people who've done it
+     chapters:    [Account Ids] — only these chapters
+     minTier:     "silver" | "gold" | "diamond"
+
+   `show` dates are when the card appears on the dashboard, not the event
+   dates. Windows below are placeholders until the FY27–28 calendar is set.
+   ════════════════════════════════════════════════════════════════ */
+
+/* Featured program card. The engine picks the highest-priority card that is
+   inside its show window and matches the member. `fallback: true` is shown
+   when nothing else matches. Convince the World Week isn't listed here:
+   its challenge card already sits in the same column from August on. */
+export const FEATURED = [
+  {
+    id: "cei-fy27", priority: 2, show: ["2026-11-01", "2027-03-15"], audience: { status: "undergrad", notAttended: PROGRAMS.cei },
+    eyebrow: "Recommended for you", title: "Civic Engagement Institute",
+    sub: "Learn to lead service and civic action with brothers from across the country. Attending unlocks Service Leader.",
+    url: DEST.cei.url, cta: "See CEI", unlocks: "service-3",
+  },
+  {
+    id: "li-fy28", priority: 2, show: ["2027-03-16", "2027-06-30"], audience: { status: "undergrad", notAttended: PROGRAMS.leadershipInstitute },
+    eyebrow: "Recommended for you", title: "Leadership Institute",
+    sub: "Our flagship leadership program. Attending unlocks Lifelong Learner.",
+    url: DEST.li.url, cta: "See LI", unlocks: "edu-3",
+  },
+  {
+    id: "ca-fy28", priority: 2, show: ["2027-07-01", "2027-10-31"], audience: { status: "undergrad", notAttended: PROGRAMS.careerAccelerator },
+    eyebrow: "Recommended for you", title: "Career Accelerator",
+    sub: "A weekend of interviews, résumé work and alumni mentors. Attending unlocks the Career Accelerator badge.",
+    url: DEST.ca.url, cta: "See Career Accelerator", unlocks: "career-3",
+  },
+  {
+    id: "alumni-volunteer", priority: 3, show: ["2026-08-01", "2027-07-31"], audience: { status: "alumni" },
+    eyebrow: "For alumni", title: "Volunteer with Delta Sig",
+    sub: "Advise a chapter, facilitate a program or mentor an undergraduate.",
+    url: "https://deltasig.org", cta: "Get involved",
+  },
+  {
+    id: "convention-2027", priority: 4, show: ["2026-08-01", "2027-07-31"], audience: { status: "all" }, fallback: true,
+    eyebrow: "Featured program", title: "Convention 2027",
+    sub: "Brothers from every chapter in one place. Attending unlocks Community Leader.",
+    url: DEST.conv.url, cta: "Convention site", unlocks: "rel-3",
+  },
+];
+
+/* Challenges. The anchor runs every April; timed challenges run a few weeks
+   each. In production these are Salesforce Event records of type
+   "Timed Challenge" (December build). Progress counts actions dated inside
+   the window. */
 export const CHALLENGES = {
   anchor: {
     id: "ctw-2027", title: "Convince the World Week", start: "2027-04-11", end: "2027-04-17",
+    showFrom: "2026-08-01", audience: { status: "all" },
     desc: "Complete development actions across the pillars during CTW Week.",
     countBy: "pillars", total: 4,
     tiers: [
@@ -295,8 +354,25 @@ export const CHALLENGES = {
       { label: "All In", need: 4, xp: 150, req: "All 4 pillars" },
     ],
   },
-  monthly: [
-    { id: "dec-2026-career", title: "Winter Break Career Push", desc: "Complete 2 career actions before classes start", pillar: "career", need: 2, xp: 50, start: "2026-12-01", end: "2027-01-15" },
-    { id: "nov-2026-service", title: "Service Sprint", desc: "Complete 2 service actions this month", pillar: "service", need: 2, xp: 50, start: "2026-11-01", end: "2026-11-30" },
+  timed: [
+    { id: "nov-2026-service", title: "Service Sprint", desc: "Complete 2 service actions this month", pillar: "service", need: 2, xp: 50, start: "2026-11-01", end: "2026-11-30", audience: { status: "all" } },
+    { id: "dec-2026-career", title: "Winter Break Career Push", desc: "Complete 2 career actions before classes start", pillar: "career", need: 2, xp: 50, start: "2026-12-01", end: "2027-01-15", audience: { status: "undergrad" } },
+    { id: "feb-2027-education", title: "Spring Semester Learning Push", desc: "Complete 2 education actions", pillar: "education", need: 2, xp: 50, start: "2027-02-01", end: "2027-02-28", audience: { status: "undergrad" } },
+    { id: "feb-2027-alumni-mentor", title: "Alumni Mentor Month", desc: "Have 2 career conversations with undergraduates", pillar: "career", need: 2, xp: 50, start: "2027-02-01", end: "2027-02-28", audience: { status: "alumni" } },
   ],
+  previewDays: 21, // a timed challenge appears this many days before it starts
 };
+
+/* PROPOSAL — XP for attending a program, separate from badges.
+   Off by default. Turn on with the "Program attendance XP" testing switch
+   (or ?progxp=1) to compare. See the Quincy Elliott test case. */
+export const PROGRAM_ATTENDANCE_XP = [
+  { program: PROGRAMS.careerAccelerator, xp: 150 },
+  { program: PROGRAMS.cei, xp: 150 },
+  { program: PROGRAMS.leadershipInstitute, xp: 150 },
+  { program: "convention", xp: 150, label: "Convention" },
+  { program: "LEAD Weekend", xp: 75 },
+  { program: PROGRAMS.dayOfService, xp: 50 },
+  { program: PROGRAMS.chapterRetreat, xp: 25 },
+  { program: PROGRAMS.courageAndCulture, xp: 25, label: "Courage & Culture program" },
+];

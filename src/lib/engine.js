@@ -13,7 +13,7 @@
 import {
   TIERS, BADGES, PILLARS, PROGRAMS, CONVENTION_EVENT_TYPE, OFFICER_XP, OFFICER_ROLE_TYPE,
   CHAPTER_AWARD_XP, GIVING_XP, ACHIEVEMENTS, CHALLENGES, ANNUAL_XP_CAP,
-  PROGRAM_YEAR_START_MONTH, POINTS_PER_XP, DEST,
+  PROGRAM_YEAR_START_MONTH, POINTS_PER_XP, DEST, FEATURED, PROGRAM_ATTENDANCE_XP,
 } from "../config/program.js";
 
 const DAY = 86400000;
@@ -189,20 +189,61 @@ function buildLedger(entries) {
   });
 }
 
+/* ── Audience (org-wide vs targeted content) ── */
+const isAlumni = (raw) => raw.contact.status === "Alumnus" || !!raw.contact.alumniDate;
+function didAttend(program, ctx) {
+  if (program === "convention") return ctx.regs.some((r) => r.eventType === CONVENTION_EVENT_TYPE);
+  return ctx.regs.some((r) => matchProgram(r, program));
+}
+export function matchesAudience(aud = {}, ctx, lifetimeXP = 0) {
+  if (aud.status === "undergrad" && isAlumni(ctx.raw)) return false;
+  if (aud.status === "alumni" && !isAlumni(ctx.raw)) return false;
+  if (aud.notAttended && didAttend(aud.notAttended, ctx)) return false;
+  if (aud.attended && !didAttend(aud.attended, ctx)) return false;
+  if (aud.chapters && !aud.chapters.includes(ctx.raw.contact.chapterId)) return false;
+  if (aud.minTier) {
+    const need = TIERS.find((t) => t.key === aud.minTier);
+    if (need && lifetimeXP < need.min) return false;
+  }
+  return true;
+}
+const kindOf = (aud = {}) => (Object.keys(aud).some((k) => k !== "status") || (aud.status && aud.status !== "all") ? "targeted" : "org");
+const between = (d, a, b) => d >= toDate(a) && d <= toDate(b);
+
+function pickFeatured(ctx, lifetimeXP) {
+  const live = FEATURED.filter((f) => between(ctx.today, f.show[0], f.show[1]) && matchesAudience(f.audience, ctx, lifetimeXP)).sort((a, b) => a.priority - b.priority);
+  const f = live[0] || FEATURED.find((x) => x.fallback);
+  return f ? { ...f, kind: kindOf(f.audience), considered: live.map((x) => x.id) } : null;
+}
+
 /* ── Challenges ── */
-function challengeProgress(ctx, badges) {
+function challengeProgress(ctx, badges, lifetimeXP) {
   const dated = badges.flatMap((b) => b.actions.filter((a) => a.done && a.date).map((a) => ({ pillar: b.pillar, date: a.date })));
-  const inWindow = (c, x) => x.date >= toDate(c.start) && x.date <= toDate(c.end);
+  const inWindow = (c, x) => between(x.date, c.start, c.end);
   const a = CHALLENGES.anchor;
-  const pillarsHit = new Set(dated.filter((x) => inWindow(a, x)).map((x) => x.pillar)).size;
-  const anchor = { ...a, done: pillarsHit, tiers: a.tiers.map((t) => ({ ...t, hit: pillarsHit >= t.need })), upcoming: ctx.today < toDate(a.start) };
-  const monthly = CHALLENGES.monthly
-    .filter((c) => toDate(c.end) >= ctx.today)
+  let anchor = null;
+  if (between(ctx.today, a.showFrom, a.end) && matchesAudience(a.audience, ctx, lifetimeXP)) {
+    const pillarsHit = new Set(dated.filter((x) => inWindow(a, x)).map((x) => x.pillar)).size;
+    anchor = { ...a, kind: kindOf(a.audience), done: pillarsHit, tiers: a.tiers.map((t) => ({ ...t, hit: pillarsHit >= t.need })), upcoming: ctx.today < toDate(a.start), active: between(ctx.today, a.start, a.end) };
+  }
+  const preview = (CHALLENGES.previewDays || 0) * DAY;
+  const timed = CHALLENGES.timed
+    .filter((c) => toDate(c.end) >= ctx.today && toDate(c.start).getTime() - preview <= ctx.today.getTime() && matchesAudience(c.audience, ctx, lifetimeXP))
     .map((c) => {
       const done = dated.filter((x) => x.pillar === c.pillar && inWindow(c, x)).length;
-      return { ...c, done: Math.min(done, c.need), complete: done >= c.need, active: ctx.today >= toDate(c.start) };
+      return { ...c, kind: kindOf(c.audience), done: Math.min(done, c.need), complete: done >= c.need, active: ctx.today >= toDate(c.start) };
     });
-  return { anchor, monthly };
+  return { anchor, timed };
+}
+
+/* ── Program attendance XP (proposal, off unless opts.programXP) ── */
+function programAttendance(ctx) {
+  return PROGRAM_ATTENDANCE_XP.flatMap((rule) => {
+    const hits = rule.program === "convention"
+      ? ctx.regs.filter((r) => r.eventType === CONVENTION_EVENT_TYPE)
+      : ctx.regs.filter((r) => matchProgram(r, rule.program));
+    return hits.map((r) => ({ kind: "program", label: `Attended ${r.eventName}`, xp: rule.xp, date: toDate(r.beginDate) }));
+  });
 }
 
 /* ── Recommendations ── */
@@ -212,17 +253,17 @@ function upNext(badges, ctx, givingEntries) {
     const next = badges.filter((b) => b.pillar === p.key && b.status !== "earned").sort((a, b) => a.level - b.level)[0];
     if (!next) continue;
     if (next.prereq && !next.prereq.done) {
-      items.push({ id: `${next.id}-prereq`, pillar: p.key, badgeId: next.id, progress: next.progress, action: next.prereq.label.split(" OR ")[0], context: `Unlocks ${next.name} (Level ${next.level})`, dest: next.dest });
+      items.push({ kind: "personal", id: `${next.id}-prereq`, pillar: p.key, badgeId: next.id, progress: next.progress, action: next.prereq.label.split(" OR ")[0], context: `Unlocks ${next.name} (Level ${next.level})`, dest: next.dest });
       continue;
     }
     const todo = next.actions.find((a) => !a.done && !a.pending && !a.flag) || next.actions.find((a) => !a.done);
     if (!todo) continue;
     const left = next.need - Math.min(next.actions.filter((a) => a.done).length, next.need);
-    items.push({ id: `${next.id}-${todo.id}`, pillar: p.key, badgeId: next.id, progress: next.progress, action: todo.text, context: left === 1 ? `1 action from ${next.name}` : `${left} actions from ${next.name}`, dest: todo.dest });
+    items.push({ kind: "personal", id: `${next.id}-${todo.id}`, pillar: p.key, badgeId: next.id, progress: next.progress, action: todo.text, context: left === 1 ? `1 action from ${next.name}` : `${left} actions from ${next.name}`, dest: todo.dest });
   }
   items.sort((a, b) => b.progress - a.progress);
   const top = items.slice(0, 3);
-  if (!givingEntries.length && top.length >= 3) top[2] = { id: "first-gift", pillar: null, progress: 0, action: "Make your first Foundation gift", context: `Earn ${GIVING_XP.firstGift} XP and the First Gift achievement`, dest: "foundation" };
+  if (!givingEntries.length && top.length >= 3) top[2] = { kind: "personal", id: "first-gift", pillar: null, progress: 0, action: "Make your first Foundation gift", context: `Earn ${GIVING_XP.firstGift} XP and the First Gift achievement`, dest: "foundation" };
   return top.map((t) => ({ ...t, cta: DEST[t.dest]?.label || "Learn more", url: DEST[t.dest]?.url || null }));
 }
 
@@ -242,7 +283,8 @@ export function buildMemberSummary(raw, opts = {}) {
   const officer = officerTerms(ctx);
   const awards = chapterAwards(ctx);
   const givingEntries = giving(ctx);
-  const ledger = buildLedger([...badgeEntries, ...officer, ...awards, ...givingEntries]);
+  const attendance = opts.programXP ? programAttendance(ctx) : [];
+  const ledger = buildLedger([...badgeEntries, ...attendance, ...officer, ...awards, ...givingEntries]);
 
   const lifetimeXP = ledger.reduce((s, e) => s + e.xpAwarded, 0);
   const redeemed = (raw.redemptions || []).reduce((s, r) => s + r.points, 0);
@@ -261,7 +303,9 @@ export function buildMemberSummary(raw, opts = {}) {
   const programRegs = ctx.regs.filter((r) => [PROGRAMS.careerAccelerator, PROGRAMS.cei, PROGRAMS.leadershipInstitute].includes(r.programType));
   const flagshipsDone = new Set(programRegs.map((r) => r.programType));
   const g = raw.giving || {};
-  const registeredConvention = (raw.eventRegistrations || []).some((r) => r.eventType === CONVENTION_EVENT_TYPE && !r.cancelled);
+  // Registered for an upcoming Convention, or attended one.
+  const registeredConvention = (raw.eventRegistrations || []).some((r) => r.eventType === CONVENTION_EVENT_TYPE && !r.cancelled && toDate(r.beginDate) >= today)
+    || ctx.regs.some((r) => r.eventType === CONVENTION_EVENT_TYPE);
 
   const achieved = {
     first_steps: earned.length >= 1,
@@ -288,6 +332,8 @@ export function buildMemberSummary(raw, opts = {}) {
 
   const notes = [];
   if (opts.includeStaff) notes.push("Counting staff and facilitator attendance (testing only).");
+  if (opts.programXP) notes.push("Program attendance XP is on (proposal, testing only).");
+  if (opts.today) notes.push(`Viewing as of ${iso(today)} (testing date).`);
   if (!(raw.selfReports || []).length) notes.push("Self-reported actions arrive once the Formstack forms are built.");
 
   return {
@@ -308,11 +354,13 @@ export function buildMemberSummary(raw, opts = {}) {
     xp: { lifetime: lifetimeXP, currentPoints: lifetimeXP * POINTS_PER_XP - redeemed, programYear: currentPY.key, programYearEarned, annualCap: ANNUAL_XP_CAP },
     badges,
     pillars,
-    bonus: { officer, awards, giving: givingEntries },
+    bonus: { officer, awards, giving: givingEntries, attendance },
     ledger: [...ledger].reverse(),
     achievements: ACHIEVEMENTS.map((a) => ({ ...a, earned: !!achieved[a.id] })),
     upNext: upNext(badges, ctx, givingEntries),
-    challenges: challengeProgress(ctx, badges),
+    challenges: challengeProgress(ctx, badges, lifetimeXP),
+    featured: pickFeatured(ctx, lifetimeXP),
+    today: iso(today),
     stats: {
       bestMonth: best ? { label: new Date(`${best[0]}-15T12:00:00Z`).toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }), xp: best[1] } : null,
       badgesThisYear: earned.filter((b) => programYearOf(b.earnedDate).key === currentPY.key).length,

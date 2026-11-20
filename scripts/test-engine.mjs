@@ -3,6 +3,7 @@
 import { buildMemberSummary } from "../src/lib/engine.js";
 import demo from "../src/data/demo-member.js";
 import andrew from "../src/data/andrew-thomas.snapshot.js";
+import quincy from "../src/data/quincy-elliott.snapshot.js";
 
 const today = "2026-11-20";
 function show(label, raw, opts = {}) {
@@ -14,17 +15,25 @@ function show(label, raw, opts = {}) {
   console.log("  achievements:", m.achievements.filter((a) => a.earned).map((a) => a.name).join(", ") || "none");
   console.log("  up next:", m.upNext.map((u) => `${u.action} (${u.context})`).join(" || "));
   console.log("  stats:", JSON.stringify(m.stats), "celebrate:", m.celebrate);
-  console.log("  challenges:", m.challenges.anchor.done, "/", m.challenges.anchor.total, m.challenges.monthly.map((c) => `${c.title} ${c.done}/${c.need}`).join(", "));
+  console.log("  featured:", m.featured?.id, `(${m.featured?.kind})`, "· anchor:", m.challenges.anchor ? `${m.challenges.anchor.done}/${m.challenges.anchor.total}` : "hidden", "· timed:", m.challenges.timed.map((c) => `${c.title} ${c.done}/${c.need}`).join(", ") || "none");
   return m;
 }
 
 const a = show("Demo — Jordan Rivera", demo);
 show("Andrew — Salesforce snapshot (participant attendance only)", andrew);
 show("Andrew — counting staff attendance (testing)", andrew, { includeStaff: true });
+const q = show("Quincy — Salesforce snapshot", quincy);
+const qp = show("Quincy — with program attendance XP (proposal)", quincy, { programXP: true });
+show("Quincy — during CTW Week (Apr 12, 2027)", quincy, { today: "2027-04-12" });
+show("Demo — Feb 2027", demo, { today: "2027-02-10" });
 
 // Assertions on the demo so rule changes that break expectations get caught.
 const earned = a.badges.filter((b) => b.status === "earned").map((b) => b.id).sort();
 const expect = ["career-1", "career-2", "edu-1", "service-1", "service-2"];
 if (JSON.stringify(earned) !== JSON.stringify(expect)) { console.error("\nFAIL: demo earned badges", earned); process.exit(1); }
 if (a.xp.lifetime !== 1050) { console.error("\nFAIL: demo lifetime XP", a.xp.lifetime); process.exit(1); }
+if (!q.achievements.find((x) => x.id === "three_peater").earned) { console.error("\nFAIL: Quincy should be a Three-Peater"); process.exit(1); }
+if (q.achievements.find((x) => x.id === "convention_bound").earned) { console.error("\nFAIL: a past, unattended Convention should not count as Convention Bound"); process.exit(1); }
+if (qp.xp.lifetime <= q.xp.lifetime) { console.error("\nFAIL: program XP proposal should add XP"); process.exit(1); }
+if (a.featured?.id !== "cei-fy27") { console.error("\nFAIL: demo undergrad should be featured CEI, got", a.featured?.id); process.exit(1); }
 console.log("\nAll checks passed.");

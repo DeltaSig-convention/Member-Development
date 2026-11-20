@@ -3,9 +3,9 @@ import {
   Briefcase, Handshake, BookOpen, Users, CheckCircle2, Shield, Star, Check, Award, Lock, Gift, ShoppingBag, X, Zap,
   Target, Crown, Medal, Circle, Heart, ChevronDown, ChevronUp, Sparkles, Map as MapIcon, ExternalLink, UserCog, Trophy,
   ArrowUpRight, ArrowDownRight, Minus, Home, Bell, ChevronLeft, Sun, Moon, TrendingUp, Calendar, Gem, Database, FileText,
-  Clock, Info,
+  Clock, Info, SlidersHorizontal, Tag,
 } from "lucide-react";
-import { BRAND, PILLARS, DEST, REWARDS, HERO, TIERS, BADGES as BADGE_CONFIG } from "./config/program.js";
+import { BRAND, PILLARS, DEST, REWARDS, TIERS, BADGES as BADGE_CONFIG } from "./config/program.js";
 import { buildMemberSummary } from "./lib/engine.js";
 import { SOURCES, getRawMember, readUrlState, writeUrlState } from "./lib/loadMember.js";
 import DEMO_CHAPTER, { RARITY_PREVIEW } from "./data/demo-chapter.js";
@@ -35,6 +35,10 @@ export default function App() {
   const initial = readUrlState();
   const [memberKey, setMemberKey] = useState(initial.member);
   const [includeStaff, setIncludeStaff] = useState(initial.staff);
+  const [programXP, setProgramXP] = useState(initial.progxp);
+  const [testDate, setTestDate] = useState(initial.date);
+  const [showSources, setShowSources] = useState(initial.sources);
+  const [testOpen, setTestOpen] = useState(false);
   const [tab, setTab] = useState("dashboard");
   const [dark, setDark] = useState(true);
   const [showRewards, setShowRewards] = useState(false);
@@ -50,13 +54,16 @@ export default function App() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
-  useEffect(() => writeUrlState({ member: memberKey, staff: includeStaff }), [memberKey, includeStaff]);
+  useEffect(() => writeUrlState({ member: memberKey, staff: includeStaff, progxp: programXP, date: testDate, sources: showSources }), [memberKey, includeStaff, programXP, testDate, showSources]);
 
-  const m = useMemo(() => buildMemberSummary(getRawMember(memberKey), { includeStaff }), [memberKey, includeStaff]);
+  const m = useMemo(
+    () => buildMemberSummary(getRawMember(memberKey), { includeStaff, programXP, ...(testDate ? { today: testDate } : {}) }),
+    [memberKey, includeStaff, programXP, testDate],
+  );
   const [celebration, setCelebration] = useState(m.celebrate);
   useEffect(() => setCelebration(m.celebrate), [m.celebrate]);
 
-  const today = new Date();
+  const today = new Date(`${m.today}T12:00:00Z`);
   const T = dark ? DARK : LIGHT;
   const card = { background: T.card, borderRadius: 10, padding: "18px 20px", boxShadow: dark ? "none" : "0 1px 3px rgba(0,0,0,0.06)", border: `1px solid ${T.borderLight}` };
   const badgeById = Object.fromEntries(m.badges.map((b) => [b.id, b]));
@@ -111,30 +118,50 @@ export default function App() {
   ];
   const go = (k) => { setTab(k); setSelectedBadgeId(null); window.scrollTo?.(0, 0); };
 
-  const DataSwitcher = ({ compact }) => (
-    <div style={{ display: "flex", flexDirection: compact ? "row" : "column", gap: compact ? 10 : 8, alignItems: compact ? "center" : "stretch", flexWrap: "wrap" }}>
-      {!compact && <p style={h({ fontSize: 10, color: T.textMuted, letterSpacing: "0.06em" })}>VIEWING</p>}
-      <select aria-label="Member to view" value={memberKey} onChange={(e) => setMemberKey(e.target.value)} style={{ ...bd({ fontSize: 12, color: T.text }), maxWidth: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: "6px 8px" }}>
+  /* Where a piece of content comes from — shown when "Show content sources" is on. */
+  const SRC = {
+    personal: ["Personal", "Calculated from this member's Salesforce records", BRAND.nileLight],
+    org: ["Org-wide", "Scheduled by HQ for every member", BRAND.gold],
+    targeted: ["Targeted", "Scheduled by HQ for members who match an audience", "#a983c4"],
+  };
+  const Src = ({ kind, style }) => {
+    if (!showSources || !SRC[kind]) return null;
+    const [l, d, c] = SRC[kind];
+    return <span title={d} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 4, background: `${c}1c`, border: `1px dashed ${c}88`, ...h({ fontSize: 9, color: c, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap" }), ...style }}><Tag size={9} color={c} />{l}</span>;
+  };
+
+  const check = (label, value, set) => (
+    <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", ...bd({ fontSize: 11, color: T.textSec }) }}>
+      <input type="checkbox" checked={value} onChange={(e) => set(e.target.checked)} />{label}
+    </label>
+  );
+  const inputStyle = { ...bd({ fontSize: 12, color: T.text }), maxWidth: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: "6px 8px", colorScheme: dark ? "dark" : "light" };
+  const TestingPanel = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <p style={h({ fontSize: 10, color: T.textMuted, letterSpacing: "0.06em" })}>TESTING</p>
+      <select aria-label="Member to view" value={memberKey} onChange={(e) => setMemberKey(e.target.value)} style={inputStyle}>
         {SOURCES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
       </select>
-      {isReal && (
-        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", ...bd({ fontSize: 11, color: T.textSec }) }}>
-          <input type="checkbox" checked={includeStaff} onChange={(e) => setIncludeStaff(e.target.checked)} />
-          Count staff attendance (testing)
-        </label>
-      )}
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input type="date" aria-label="Pretend today is" value={testDate} onChange={(e) => setTestDate(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
+        {testDate && <button onClick={() => setTestDate("")} style={{ ...bd({ fontSize: 11, color: BRAND.nileLight }), background: "none", border: "none", cursor: "pointer", padding: 0 }}>Today</button>}
+      </div>
+      <p style={bd({ fontSize: 10, color: T.textMuted, marginTop: -5 })}>Pretend today is… (see how content rotates)</p>
+      {isReal && check("Count staff attendance", includeStaff, setIncludeStaff)}
+      {check("Program attendance XP (proposal)", programXP, setProgramXP)}
+      {check("Show content sources", showSources, setShowSources)}
     </div>
   );
 
   const Sidebar = () => (
-    <div style={{ width: 210, position: "fixed", left: 0, top: 52, bottom: 0, background: T.card, borderRight: `1px solid ${T.border}`, padding: "20px 0", zIndex: 40, display: "flex", flexDirection: "column" }}>
+    <div style={{ width: 210, position: "fixed", left: 0, top: 52, bottom: 0, background: T.card, borderRight: `1px solid ${T.border}`, padding: "20px 0", zIndex: 40, display: "flex", flexDirection: "column", overflowY: "auto" }}>
       {navItems.map((n) => (
         <button key={n.k} onClick={() => go(n.k)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 20px", width: "100%", background: tab === n.k ? `${BRAND.nile}18` : "transparent", color: tab === n.k ? BRAND.nileLight : T.textMuted, border: "none", borderRight: tab === n.k ? `3px solid ${BRAND.nileLight}` : "3px solid transparent", cursor: "pointer", ...h({ fontSize: 13, textAlign: "left" }) }}>
           <n.Ic size={18} strokeWidth={tab === n.k ? 2.2 : 1.6} />{n.l}
         </button>
       ))}
-      <div style={{ marginTop: "auto", padding: "0 20px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <DataSwitcher />
+      <div style={{ marginTop: "auto", padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 16, borderTop: `1px solid ${T.borderLight}` }}>
+        {TestingPanel()}
         <button onClick={() => setDark(!dark)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: T.textMuted, padding: 0, ...bd({ fontSize: 12 }) }}>{dark ? <Sun size={14} /> : <Moon size={14} />}{dark ? "Light mode" : "Dark mode"}</button>
       </div>
     </div>
@@ -194,38 +221,77 @@ export default function App() {
   );
 
   /* ── dashboard sections ── */
-  const Hero = () => (
-    <div style={{ background: T.heroGrad, padding: desk ? "40px 32px 34px" : "32px 22px 28px", position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", top: 0, right: 0, width: 220, height: 220, background: `radial-gradient(circle at 100% 0%, ${BRAND.gold}22 0%, transparent 70%)`, pointerEvents: "none" }} />
-      <div style={{ maxWidth: 600, position: "relative" }}>
-        <p style={h({ fontSize: 11, color: BRAND.gold, marginBottom: 8, letterSpacing: "0.08em", textTransform: "uppercase" })}>{HERO.eyebrow}</p>
-        <p style={hB({ fontSize: desk ? 26 : 22, color: "#fff", lineHeight: 1.2, marginBottom: 8 })}>{HERO.title}</p>
-        <p style={bd({ fontSize: 13, color: "rgba(255,255,255,0.72)", lineHeight: 1.5, marginBottom: 16 })}>{HERO.sub}</p>
-        <a href={HERO.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 18px", borderRadius: 6, background: BRAND.gold, color: BRAND.sphinx, ...h({ fontSize: 12, textDecoration: "none" }) }}>{HERO.cta} <ExternalLink size={11} /></a>
-      </div>
-    </div>
-  );
-
-  const Profile = () => (
-    <div style={{ padding: "20px 20px 0", display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
-      <div style={{ width: 60, height: 60, borderRadius: "50%", background: T.surface, border: `3px solid ${m.tier.color}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={hB({ fontSize: 20, color: T.textSec })}>{m.member.initials}</span>
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={hB({ fontSize: 18, color: T.text })}>{m.member.firstName} {m.member.lastName}</p>
-        <p style={bd({ fontSize: 12, color: T.textSec, marginBottom: 6 })}>{[m.member.chapter, m.member.school, m.member.classYear ? `Class of ${m.member.classYear}` : m.member.status].filter(Boolean).join(" ▴ ")}</p>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <TierPill tierKey={m.tier.key} />
-          <span style={bB({ fontSize: 12, color: BRAND.nileLight })}>{m.xp.lifetime.toLocaleString()} lifetime XP</span>
-          <span style={bd({ fontSize: 12, color: T.textMuted })}>{earned.length} badge{earned.length === 1 ? "" : "s"}</span>
+  /* Featured program — picked by the engine from the FEATURED schedule (config). */
+  const Featured = () => {
+    const f = m.featured;
+    if (!f) return null;
+    return (
+      <div style={{ background: T.heroGrad, borderRadius: 10, padding: "20px 20px 18px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: 0, right: 0, width: 160, height: 160, background: `radial-gradient(circle at 100% 0%, ${BRAND.gold}26 0%, transparent 70%)`, pointerEvents: "none" }} />
+        <div style={{ position: "relative" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
+            <p style={h({ fontSize: 10, color: BRAND.gold, letterSpacing: "0.08em", textTransform: "uppercase" })}>{f.eyebrow}</p>
+            <Src kind={f.kind} />
+          </div>
+          <p style={hB({ fontSize: 18, color: "#fff", lineHeight: 1.25, marginBottom: 6 })}>{f.title}</p>
+          <p style={bd({ fontSize: 12, color: "rgba(255,255,255,0.75)", lineHeight: 1.5, marginBottom: 14 })}>{f.sub}</p>
+          <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 6, background: BRAND.gold, color: BRAND.sphinx, ...h({ fontSize: 12, textDecoration: "none" }) }}>{f.cta} <ExternalLink size={11} /></a>
         </div>
-        {latestBadge && <p style={bd({ fontSize: 11, color: T.textSec, marginTop: 4 })}>Latest: {latestBadge.name} ✓</p>}
       </div>
-    </div>
-  );
+    );
+  };
+
+  /* Who you are + where you stand: tier ring around the avatar, points, program-year cap. */
+  const StatusBand = () => {
+    const r = 40, circ = 2 * Math.PI * r;
+    return (
+      <div style={{ ...card, padding: desk ? "20px 24px" : "18px", display: "flex", flexDirection: desk ? "row" : "column", alignItems: desk ? "center" : "stretch", gap: desk ? 28 : 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flex: 1, minWidth: 0 }}>
+          <div style={{ position: "relative", width: 96, height: 96, flexShrink: 0 }}>
+            <svg width="96" height="96" viewBox="0 0 96 96" style={{ position: "absolute", inset: 0 }}>
+              <circle cx="48" cy="48" r={r} fill="none" stroke={T.borderLight} strokeWidth="5" />
+              <circle cx="48" cy="48" r={r} fill="none" stroke={m.tier.color} strokeWidth="5" strokeDasharray={circ} strokeDashoffset={circ * (1 - m.tier.progress)} strokeLinecap="round" style={{ transform: "rotate(-90deg)", transformOrigin: "center" }} />
+            </svg>
+            <div style={{ position: "absolute", inset: 14, borderRadius: "50%", background: T.surface, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={hB({ fontSize: 22, color: T.textSec })}>{m.member.initials}</span>
+            </div>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <p style={hB({ fontSize: 20, color: T.text })}>{m.member.firstName} {m.member.lastName}</p>
+            <p style={bd({ fontSize: 12, color: T.textSec, marginBottom: 8 })}>{[m.member.chapter, m.member.school, m.member.classYear ? `Class of ${m.member.classYear}` : m.member.status].filter(Boolean).join(" ▴ ")}</p>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <TierPill tierKey={m.tier.key} />
+              <span style={bd({ fontSize: 12, color: T.textSec })}>{earned.length} badge{earned.length === 1 ? "" : "s"}{latestBadge ? ` · latest ${latestBadge.name}` : ""}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: desk ? 28 : 12, alignItems: "stretch", ...(desk ? {} : { borderTop: `1px solid ${T.borderLight}`, paddingTop: 14 }) }}>
+          <div style={{ minWidth: desk ? 150 : 0, flex: desk ? "none" : 1 }}>
+            <p style={bd({ fontSize: 11, color: T.textMuted })}>Lifetime XP</p>
+            <p style={hB({ fontSize: 26, color: T.text, lineHeight: 1.1 })}>{m.xp.lifetime.toLocaleString()}</p>
+            <p style={bd({ fontSize: 11, color: m.tier.color, marginTop: 2 })}>{m.tier.next ? `${m.tier.xpToNext.toLocaleString()} XP to ${m.tier.next.label}` : "Top tier reached"}</p>
+          </div>
+          <div style={{ width: 1, background: T.borderLight }} />
+          <div onClick={() => setShowRewards(true)} style={{ minWidth: desk ? 150 : 0, flex: desk ? "none" : 1, cursor: "pointer" }}>
+            <p style={bd({ fontSize: 11, color: T.textMuted })}>Points to spend</p>
+            <p style={hB({ fontSize: 26, color: BRAND.nileLight, lineHeight: 1.1 })}>{m.xp.currentPoints.toLocaleString()}</p>
+            <p style={{ ...h({ fontSize: 11, color: BRAND.nileLight, marginTop: 2 }), display: "flex", alignItems: "center", gap: 4 }}><ShoppingBag size={11} /> Rewards</p>
+          </div>
+          {desk && <div style={{ width: 1, background: T.borderLight }} />}
+          {desk && (
+            <div style={{ minWidth: 170 }}>
+              <p style={bd({ fontSize: 11, color: T.textMuted })}>{m.xp.programYear} program year</p>
+              <p style={hB({ fontSize: 26, color: T.text, lineHeight: 1.1 })}>{m.xp.programYearEarned.toLocaleString()}<span style={bd({ fontSize: 12, color: T.textMuted })}> / {m.xp.annualCap.toLocaleString()}</span></p>
+              <div style={{ marginTop: 7 }}><Bar pct={m.xp.programYearEarned / m.xp.annualCap} color={BRAND.nileLight} /></div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const DataNotes = () => (m.notes.length || isReal) ? (
-    <div style={{ ...card, padding: "10px 14px", marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start", borderLeft: `3px solid ${isReal ? BRAND.nileLight : T.border}` }}>
+    <div style={{ ...card, padding: "9px 14px", marginBottom: 14, display: "flex", gap: 10, alignItems: "flex-start", borderLeft: `3px solid ${isReal ? BRAND.nileLight : T.border}` }}>
       <Database size={14} color={isReal ? BRAND.nileLight : T.textMuted} style={{ marginTop: 2, flexShrink: 0 }} />
       <div>
         <p style={bd({ fontSize: 12, color: T.textSec })}>{isReal ? `Live Salesforce data · snapshot ${fmtDate(m.asOf)}` : "Demo member · sample data in the Salesforce shape"}</p>
@@ -236,7 +302,7 @@ export default function App() {
 
   const UpNext = () => (
     <div>
-      <p style={h({ fontSize: 14, color: BRAND.nileLight, marginBottom: 10 })}>Up next for you</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><p style={h({ fontSize: 15, color: T.text })}>Up next for you</p><Src kind="personal" /></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {m.upNext.map((item) => {
           const p = item.pillar ? PILLAR[item.pillar] : null;
@@ -255,60 +321,43 @@ export default function App() {
 
   const Challenges = () => {
     const a = m.challenges.anchor;
+    const timed = m.challenges.timed;
+    if (!a && !timed.length) return null;
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ ...card, borderTop: `3px solid ${BRAND.gold}`, background: dark ? "#1d1a10" : "#fffbea" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}><Zap size={15} color={BRAND.gold} /><p style={h({ fontSize: 11, color: BRAND.gold, letterSpacing: "0.06em" })}>ANNUAL CHALLENGE</p></div>
-          <p style={hB({ fontSize: 16, color: T.text, marginBottom: 4 })}>{a.title}</p>
-          <p style={bd({ fontSize: 12, color: T.textSec, marginBottom: 4, lineHeight: 1.5 })}>{a.desc}</p>
-          <p style={bd({ fontSize: 11, color: T.textMuted, marginBottom: 12 })}>{fmtDate(a.start)} – {fmtDate(a.end)}{a.upcoming ? " · coming up" : ""}</p>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            {a.tiers.map((t) => (
-              <div key={t.label} style={{ flex: 1, padding: "10px 6px", borderRadius: 8, textAlign: "center", background: t.hit ? `${BRAND.gold}22` : T.surface, border: `1px solid ${t.hit ? `${BRAND.gold}66` : T.borderLight}` }}>
-                <p style={hB({ fontSize: 14, color: t.hit ? BRAND.gold : T.textSec })}>+{t.xp}</p>
-                <p style={h({ fontSize: 10, color: T.text, marginTop: 2 })}>{t.label}</p>
-                <p style={bd({ fontSize: 9, color: T.textMuted, marginTop: 2 })}>{t.req}</p>
-              </div>
-            ))}
+        {a && (
+          <div style={{ ...card, borderTop: `3px solid ${BRAND.gold}`, background: dark ? "#1d1a10" : "#fffbea" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}><Zap size={15} color={BRAND.gold} /><p style={h({ fontSize: 11, color: BRAND.gold, letterSpacing: "0.06em", flex: 1 })}>{a.active ? "HAPPENING NOW" : "ANNUAL CHALLENGE"}</p><Src kind={a.kind} /></div>
+            <p style={hB({ fontSize: 16, color: T.text, marginBottom: 4 })}>{a.title}</p>
+            <p style={bd({ fontSize: 12, color: T.textSec, marginBottom: 4, lineHeight: 1.5 })}>{a.desc}</p>
+            <p style={bd({ fontSize: 11, color: T.textMuted, marginBottom: 12 })}>{fmtDate(a.start)} – {fmtDate(a.end)}{a.upcoming ? " · coming up" : ""}</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {a.tiers.map((t) => (
+                <div key={t.label} style={{ flex: 1, padding: "10px 6px", borderRadius: 8, textAlign: "center", background: t.hit ? `${BRAND.gold}22` : T.surface, border: `1px solid ${t.hit ? `${BRAND.gold}66` : T.borderLight}` }}>
+                  <p style={hB({ fontSize: 14, color: t.hit ? BRAND.gold : T.textSec })}>+{t.xp}</p>
+                  <p style={h({ fontSize: 10, color: T.text, marginTop: 2 })}>{t.label}</p>
+                  <p style={bd({ fontSize: 9, color: T.textMuted, marginTop: 2 })}>{t.req}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ flex: 1 }}><Bar pct={a.done / a.total} color={BRAND.gold} height={5} /></div><span style={bd({ fontSize: 11, color: T.textMuted })}>{a.done}/{a.total} pillars</span></div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ flex: 1 }}><Bar pct={a.done / a.total} color={BRAND.gold} height={5} /></div><span style={bd({ fontSize: 11, color: T.textMuted })}>{a.done}/{a.total} pillars</span></div>
-        </div>
-        {m.challenges.monthly.length > 0 && (
+        )}
+        {timed.length > 0 && (
           <div style={card}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><Calendar size={14} color={T.textSec} /><p style={h({ fontSize: 13, color: T.text })}>Timed challenges</p></div>
-            {m.challenges.monthly.map((c, i) => (
+            {timed.map((c, i) => (
               <div key={c.id} style={{ padding: "10px 0", borderTop: i ? `1px solid ${T.borderLight}` : "none" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
                   <div><p style={h({ fontSize: 12, color: T.text })}>{c.title}</p><p style={bd({ fontSize: 11, color: T.textSec })}>{c.desc}</p></div>
                   <span style={bB({ fontSize: 11, color: PILLAR[c.pillar].color, whiteSpace: "nowrap" })}>+{c.xp} XP</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ flex: 1 }}><Bar pct={c.done / c.need} color={PILLAR[c.pillar].color} /></div><span style={bd({ fontSize: 10, color: T.textMuted })}>{c.done}/{c.need}</span></div>
-                <p style={bd({ fontSize: 10, color: T.textMuted, marginTop: 4 })}>{c.active ? `Ends ${fmtDate(c.end)}` : `Starts ${fmtDate(c.start)}`}</p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}><p style={bd({ fontSize: 10, color: T.textMuted })}>{c.active ? `Ends ${fmtDate(c.end)}` : `Starts ${fmtDate(c.start)}`}</p><Src kind={c.kind} /></div>
               </div>
             ))}
           </div>
         )}
-      </div>
-    );
-  };
-
-  const XPRing = () => {
-    const r = 52, circ = 2 * Math.PI * r;
-    return (
-      <div onClick={() => setShowRewards(true)} style={{ ...card, padding: "24px 20px 18px", cursor: "pointer", textAlign: "center", position: "relative" }}>
-        <div style={{ position: "absolute", top: 14, right: 16, display: "flex", alignItems: "center", gap: 4 }}><ShoppingBag size={12} color={T.textMuted} /><span style={bd({ fontSize: 11, color: T.textMuted })}>{m.xp.currentPoints.toLocaleString()} pts to spend</span></div>
-        <svg width="128" height="128" viewBox="0 0 120 120" style={{ display: "block", margin: "8px auto 0" }}>
-          <circle cx="60" cy="60" r={r} fill="none" stroke={T.borderLight} strokeWidth="6" />
-          <circle cx="60" cy="60" r={r} fill="none" stroke={m.tier.color} strokeWidth="6" strokeDasharray={circ} strokeDashoffset={circ * (1 - m.tier.progress)} strokeLinecap="round" style={{ transform: "rotate(-90deg)", transformOrigin: "center" }} />
-          <text x="60" y="50" textAnchor="middle" style={{ ...h(), fontSize: 11, fill: m.tier.color }}>{m.tier.label}</text>
-          <text x="60" y="70" textAnchor="middle" style={{ ...hB(), fontSize: 20, fill: T.text }}>{m.xp.lifetime.toLocaleString()}</text>
-          <text x="60" y="84" textAnchor="middle" style={{ ...bd(), fontSize: 9, fill: T.textMuted }}>LIFETIME XP</text>
-        </svg>
-        {m.tier.next ? <p style={bd({ fontSize: 12, color: T.textSec, marginTop: 8 })}>{m.tier.xpToNext.toLocaleString()} XP to {m.tier.next.label}</p> : <p style={bd({ fontSize: 12, color: T.textSec, marginTop: 8 })}>Top tier reached</p>}
-        <div style={{ maxWidth: 240, margin: "12px auto 0" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, ...bd({ fontSize: 11, color: T.textMuted }) }}><span>{m.xp.programYear} program year</span><span>{m.xp.programYearEarned.toLocaleString()} / {m.xp.annualCap.toLocaleString()}</span></div>
-          <Bar pct={m.xp.programYearEarned / m.xp.annualCap} color={BRAND.nileLight} />
-        </div>
       </div>
     );
   };
@@ -325,7 +374,7 @@ export default function App() {
     ];
     return (
       <div style={card}>
-        <p style={h({ fontSize: 14, color: T.text, marginBottom: 12 })}>Your stats</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}><p style={h({ fontSize: 14, color: T.text })}>Your stats</p><Src kind="personal" /></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           {items.map((x, i) => (
             <div key={x.l} style={{ textAlign: "center", padding: "8px 4px", animation: `countUp 0.4s ease ${i * 0.06}s both` }}>
@@ -341,6 +390,7 @@ export default function App() {
 
   const BonusXP = () => {
     const sections = [
+      ...(m.bonus.attendance.length ? [{ title: "Program attendance (proposal)", items: m.bonus.attendance, c: BRAND.gold, empty: "" }] : []),
       { title: "Officer terms", items: m.bonus.officer, c: "#a983c4", empty: "President 200 · Executive Board 150 · Committee Chair 100 per term" },
       { title: "Chapter awards", items: m.bonus.awards, c: BRAND.gold, empty: "Pyramid of Excellence 150 · Chapter of Distinction 100 · Next Era 75" },
       { title: "Foundation giving", items: m.bonus.giving, c: BRAND.nileLight, empty: "First gift 100 · Consecutive year 75 · Society member 150", link: "foundation" },
@@ -348,9 +398,9 @@ export default function App() {
     const total = sections.reduce((s, x) => s + x.items.reduce((a, i) => a + i.xp, 0), 0);
     return (
       <>
-        <div onClick={() => setShowBonus(!showBonus)} style={{ ...card, padding: "14px 18px", marginTop: 20, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+        <div onClick={() => setShowBonus(!showBonus)} style={{ ...card, padding: "14px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 34, height: 34, borderRadius: 8, background: `${BRAND.purple}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><UserCog size={15} color="#a983c4" /></div>
-          <div style={{ flex: 1 }}><p style={h({ fontSize: 13, color: T.text })}>Bonus XP</p><p style={bd({ fontSize: 11, color: T.textSec })}>Officer terms, chapter awards and Foundation giving</p></div>
+          <div style={{ flex: 1 }}><p style={h({ fontSize: 13, color: T.text })}>Bonus XP</p><p style={bd({ fontSize: 11, color: T.textSec })}>{m.bonus.attendance.length ? "Programs, officer terms, awards, giving" : "Officer terms, chapter awards, giving"}</p></div>
           <span style={bB({ fontSize: 12, color: BRAND.nileLight })}>+{total}</span>
           {showBonus ? <ChevronUp size={15} color={T.textMuted} /> : <ChevronDown size={15} color={T.textMuted} />}
         </div>
@@ -376,8 +426,8 @@ export default function App() {
 
   const PillarOverview = () => (
     <>
-      <p style={h({ fontSize: 15, color: T.text, marginTop: 24, marginBottom: 12 })}>Your pillars</p>
-      <div style={{ display: "grid", gridTemplateColumns: desk ? "1fr 1fr" : "1fr", gap: 10, marginBottom: 24 }}>
+      <p style={h({ fontSize: 15, color: T.text, marginBottom: 12 })}>Your pillars</p>
+      <div style={{ display: "grid", gridTemplateColumns: desk ? "1fr 1fr" : "1fr", gap: 10 }}>
         {m.pillars.map((p) => {
           const P = PILLAR[p.key];
           const pb = m.badges.filter((b) => b.pillar === p.key).sort((a, b) => a.level - b.level);
@@ -417,23 +467,34 @@ export default function App() {
   );
 
   const Dashboard = () => (
-    <div style={{ maxWidth: desk ? 920 : 560, margin: "0 auto" }}>
-      <Hero />
-      <Profile />
-      <div style={{ padding: "0 20px 40px" }}>
-        <DataNotes />
-        <div style={{ display: desk ? "grid" : "flex", flexDirection: "column", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+    <div style={{ maxWidth: desk ? 1120 : 560, margin: "0 auto", padding: desk ? "24px 28px 40px" : "16px 16px 40px" }}>
+      <DataNotes />
+      <StatusBand />
+      {desk ? (
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.65fr) minmax(300px, 1fr)", gap: 24, marginTop: 24, alignItems: "start" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+            <UpNext />
+            <div><PillarOverview /></div>
+            <div><Achievements /></div>
+            <Stats />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <Featured />
+            <Challenges />
+            <BonusXP />
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 16 }}>
+          <Featured />
           <UpNext />
           <Challenges />
-        </div>
-        <div style={{ display: desk ? "grid" : "flex", flexDirection: "column", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 20 }}>
-          <XPRing />
+          <PillarOverview />
           <Stats />
+          <BonusXP />
+          <Achievements />
         </div>
-        <BonusXP />
-        <PillarOverview />
-        <Achievements />
-      </div>
+      )}
     </div>
   );
 
@@ -568,7 +629,7 @@ export default function App() {
 
   /* ── activity ── */
   const Activity = () => {
-    const iconFor = (e) => (e.kind === "badge" ? PILLAR[e.pillar]?.Icon || Award : e.kind === "officer" ? UserCog : e.kind === "award" ? Trophy : e.kind === "giving" ? Heart : TrendingUp);
+    const iconFor = (e) => (e.kind === "badge" ? PILLAR[e.pillar]?.Icon || Award : e.kind === "officer" ? UserCog : e.kind === "award" ? Trophy : e.kind === "giving" ? Heart : e.kind === "program" ? Calendar : TrendingUp);
     const colorFor = (e) => (e.kind === "badge" ? PILLAR[e.pillar]?.color : e.kind === "officer" ? "#a983c4" : e.kind === "award" ? BRAND.gold : BRAND.nileLight);
     return (
       <div style={{ padding: "20px 20px 100px", maxWidth: desk ? 720 : 560, margin: "0 auto" }}>
@@ -581,7 +642,7 @@ export default function App() {
           return (
             <div key={`${e.label}-${i}`} style={{ display: "flex", gap: 12, padding: "14px 0", borderTop: i ? `1px solid ${T.borderLight}` : "none", animation: `slideUp 0.3s ease ${Math.min(i, 8) * 0.04}s both` }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: `${c}1f`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Ic size={16} color={c} /></div>
-              <div style={{ flex: 1 }}><p style={h({ fontSize: 13, color: T.text })}>{e.label}</p><p style={bd({ fontSize: 11, color: T.textSec })}>{e.kind === "badge" ? `${PILLAR[e.pillar].label} badge` : e.kind === "officer" ? "Officer term" : e.kind === "award" ? "Chapter award" : "Foundation giving"} · {e.programYear}{e.capped ? " · annual cap reached" : ""}</p></div>
+              <div style={{ flex: 1 }}><p style={h({ fontSize: 13, color: T.text })}>{e.label}</p><p style={bd({ fontSize: 11, color: T.textSec })}>{e.kind === "badge" ? `${PILLAR[e.pillar].label} badge` : e.kind === "officer" ? "Officer term" : e.kind === "award" ? "Chapter award" : e.kind === "program" ? "Program attendance (proposal)" : "Foundation giving"} · {e.programYear}{e.capped ? " · annual cap reached" : ""}</p></div>
               <div style={{ textAlign: "right", flexShrink: 0 }}><p style={bB({ fontSize: 12, color: BRAND.nileLight })}>+{e.xpAwarded} XP</p><p style={bd({ fontSize: 10, color: T.textMuted })}>{ago(e.date, today)}</p></div>
             </div>
           );
@@ -608,7 +669,15 @@ export default function App() {
       </header>
       {desk && <Sidebar />}
       <main style={{ marginLeft: desk ? 210 : 0, paddingTop: desk ? 52 : 0, paddingBottom: desk ? 20 : 70 }}>
-        {!desk && <div style={{ padding: "10px 20px", borderBottom: `1px solid ${T.border}`, background: T.card }}><DataSwitcher compact /></div>}
+        {!desk && (
+          <div style={{ padding: "8px 16px", borderBottom: `1px solid ${T.border}`, background: T.card }}>
+            <button onClick={() => setTestOpen(!testOpen)} style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "4px 0", ...h({ fontSize: 12, color: T.textSec }) }}>
+              <SlidersHorizontal size={13} /> Testing · {SOURCES.find((x) => x.key === memberKey)?.label}{testDate ? ` · ${testDate}` : ""}
+              <span style={{ marginLeft: "auto" }}>{testOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
+            </button>
+            {testOpen && <div style={{ padding: "8px 0 6px" }}>{TestingPanel()}</div>}
+          </div>
+        )}
         <View />
         <footer style={{ padding: "8px 20px 24px", textAlign: "center" }}><p style={bd({ fontSize: 10, color: T.textMuted })}><FileText size={10} style={{ verticalAlign: "-1px" }} /> Proof of concept · {BADGE_CONFIG.length} badges · rules engine v0.1</p></footer>
       </main>
