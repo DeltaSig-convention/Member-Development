@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { BRAND, PILLARS, DEST, REWARDS, TIERS, BADGES as BADGE_CONFIG } from "./config/program.js";
 import { buildMemberSummary } from "./lib/engine.js";
-import { SOURCES, getRawMember, readUrlState, writeUrlState } from "./lib/loadMember.js";
+import { SOURCES, getRawMember, getChapterRoster, readUrlState, writeUrlState } from "./lib/loadMember.js";
 import DEMO_CHAPTER, { RARITY_PREVIEW } from "./data/demo-chapter.js";
 
 /* ═══════════════════ THEME ═══════════════════ */
@@ -35,10 +35,10 @@ export default function App() {
   const initial = readUrlState();
   const [memberKey, setMemberKey] = useState(initial.member);
   const [includeStaff, setIncludeStaff] = useState(initial.staff);
-  const [programXP, setProgramXP] = useState(initial.progxp);
   const [testDate, setTestDate] = useState(initial.date);
   const [showSources, setShowSources] = useState(initial.sources);
   const [testOpen, setTestOpen] = useState(false);
+  const [rankView, setRankView] = useState("chapter");
   const [tab, setTab] = useState("dashboard");
   const [dark, setDark] = useState(true);
   const [showRewards, setShowRewards] = useState(false);
@@ -54,12 +54,22 @@ export default function App() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
-  useEffect(() => writeUrlState({ member: memberKey, staff: includeStaff, progxp: programXP, date: testDate, sources: showSources }), [memberKey, includeStaff, programXP, testDate, showSources]);
+  useEffect(() => writeUrlState({ member: memberKey, staff: includeStaff, date: testDate, sources: showSources }), [memberKey, includeStaff, testDate, showSources]);
 
   const m = useMemo(
-    () => buildMemberSummary(getRawMember(memberKey), { includeStaff, programXP, ...(testDate ? { today: testDate } : {}) }),
-    [memberKey, includeStaff, programXP, testDate],
+    () => buildMemberSummary(getRawMember(memberKey), { includeStaff, ...(testDate ? { today: testDate } : {}) }),
+    [memberKey, includeStaff, testDate],
   );
+  // Real chapter roster (Beta Mu today) — every brother run through the same rules.
+  const chapter = useMemo(() => {
+    const raws = getChapterRoster(getRawMember(memberKey).contact.chapterId);
+    if (!raws) return null;
+    const opts = testDate ? { today: testDate } : {};
+    const list = raws.map((r) => buildMemberSummary(r, opts));
+    const rarity = {};
+    for (const b of BADGE_CONFIG) rarity[b.id] = Math.round((100 * list.filter((x) => x.badges.find((y) => y.id === b.id)?.status === "earned").length) / list.length);
+    return { list, rarity, name: raws[0].contact.chapterName };
+  }, [memberKey, testDate]);
   const [celebration, setCelebration] = useState(m.celebrate);
   useEffect(() => setCelebration(m.celebrate), [m.celebrate]);
 
@@ -73,41 +83,42 @@ export default function App() {
   const isReal = m.source !== "demo";
 
   /* ── small components ── */
-  const TierPill = ({ tierKey }) => {
+  const TierPill = useMemo(() => ({ tierKey }) => {
     const t = TIER_BY_KEY[tierKey];
     return <span style={h({ fontSize: 11, padding: "3px 10px", borderRadius: 10, background: `${t.color}1f`, color: t.color, border: `1px solid ${t.color}40` })}>{t.label}</span>;
-  };
-  const DL = ({ dest }) => {
+  }, []);
+  const DL = useMemo(() => ({ dest }) => {
     const d = DEST[dest];
     if (!d) return null;
     if (!d.url) return <span style={h({ fontSize: 10, color: T.textMuted })}>{d.label}</span>;
     return <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 3, ...h({ fontSize: 10, color: BRAND.nileLight, textDecoration: "none" }) }}>{d.label}<ExternalLink size={9} /></a>;
-  };
-  const SourceChip = ({ a }) => {
+  }, [T]);
+  const SourceChip = useMemo(() => ({ a }) => {
     if (a.done) return <span style={bd({ fontSize: 10, color: BRAND.nileLight })}>{a.via === "salesforce" ? "From Salesforce" : a.via === "auto+self" ? "Salesforce + self-report" : "Self-reported"}</span>;
     if (a.pending) return <span style={bd({ fontSize: 10, color: BRAND.gold })}>Pending approval</span>;
     if (a.flag) return <span style={bd({ fontSize: 10, color: T.textMuted })}>{a.flag}</span>;
     return <span style={bd({ fontSize: 10, color: T.textMuted })}>{a.source === "auto" ? "Tracked automatically" : "Self-report form · coming soon"}</span>;
-  };
-  const BadgeShape = ({ level, color, earned: e, size = 40 }) => {
+  }, [T]);
+  const BadgeShape = useMemo(() => ({ level, color, earned: e, size = 40 }) => {
     const base = { width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: e ? color : `${color}14`, border: e ? "none" : `2px dashed ${color}55` };
     const icon = e ? <Check size={size * 0.42} color="#fff" /> : level === 1 ? <Circle size={size * 0.3} color={color} /> : level === 2 ? <Shield size={size * 0.36} color={color} /> : <Crown size={size * 0.36} color={color} />;
     if (level === 1) return <div style={{ ...base, borderRadius: "50%" }}>{icon}</div>;
     if (level === 2) return <div style={{ ...base, borderRadius: "14%" }}>{icon}</div>;
     return <div style={{ ...base, borderRadius: "50%", background: e ? `linear-gradient(135deg, ${color}, ${color}bb)` : base.background, ...(e ? { animation: "glow 2.5s ease infinite", "--gc": color } : {}) }}>{icon}</div>;
-  };
-  const Bar = ({ pct, color, height = 4 }) => (
+  }, []);
+  const Bar = useMemo(() => ({ pct, color, height = 4 }) => (
     <div style={{ height, borderRadius: height, background: T.borderLight }}>
       <div style={{ height, borderRadius: height, width: `${Math.round(pct * 100)}%`, background: color, transformOrigin: "left", animation: "fillBar 0.8s ease" }} />
     </div>
-  );
-  const Rarity = ({ id }) => {
-    const r = RARITY_PREVIEW[id];
+  ), [T]);
+  // Rarity: real share of the member's chapter when we have the roster, sample org-wide numbers otherwise.
+  const Rarity = useMemo(() => ({ id }) => {
+    const r = chapter ? chapter.rarity[id] : RARITY_PREVIEW[id];
     if (r == null) return null;
     const label = r < 10 ? "Rare" : r < 30 ? "Uncommon" : "Common";
     const color = r < 10 ? BRAND.gold : r < 30 ? "#a983c4" : T.textMuted;
-    return <span style={bd({ fontSize: 10, color })}>{label} · {r}% of members</span>;
-  };
+    return <span style={bd({ fontSize: 10, color })}>{label} · {r}% of {chapter ? chapter.name : "members"}</span>;
+  }, [T, chapter]);
 
   /* ── navigation ── */
   const navItems = [
@@ -124,11 +135,11 @@ export default function App() {
     org: ["Org-wide", "Scheduled by HQ for every member", BRAND.gold],
     targeted: ["Targeted", "Scheduled by HQ for members who match an audience", "#a983c4"],
   };
-  const Src = ({ kind, style }) => {
+  const Src = useMemo(() => ({ kind, style }) => {
     if (!showSources || !SRC[kind]) return null;
     const [l, d, c] = SRC[kind];
     return <span title={d} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 4, background: `${c}1c`, border: `1px dashed ${c}88`, ...h({ fontSize: 9, color: c, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap" }), ...style }}><Tag size={9} color={c} />{l}</span>;
-  };
+  }, [T, showSources]);
 
   const check = (label, value, set) => (
     <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", ...bd({ fontSize: 11, color: T.textSec }) }}>
@@ -140,7 +151,9 @@ export default function App() {
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <p style={h({ fontSize: 10, color: T.textMuted, letterSpacing: "0.06em" })}>TESTING</p>
       <select aria-label="Member to view" value={memberKey} onChange={(e) => setMemberKey(e.target.value)} style={inputStyle}>
-        {SOURCES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+        {[...new Set(SOURCES.map((s) => s.group))].map((g) => (
+          <optgroup key={g} label={g}>{SOURCES.filter((s) => s.group === g).map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</optgroup>
+        ))}
       </select>
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <input type="date" aria-label="Pretend today is" value={testDate} onChange={(e) => setTestDate(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
@@ -148,7 +161,6 @@ export default function App() {
       </div>
       <p style={bd({ fontSize: 10, color: T.textMuted, marginTop: -5 })}>Pretend today is… (see how content rotates)</p>
       {isReal && check("Count staff attendance", includeStaff, setIncludeStaff)}
-      {check("Program attendance XP (proposal)", programXP, setProgramXP)}
       {check("Show content sources", showSources, setShowSources)}
     </div>
   );
@@ -280,7 +292,7 @@ export default function App() {
           {desk && <div style={{ width: 1, background: T.borderLight }} />}
           {desk && (
             <div style={{ minWidth: 170 }}>
-              <p style={bd({ fontSize: 11, color: T.textMuted })}>{m.xp.programYear} program year</p>
+              <p style={bd({ fontSize: 11, color: T.textMuted })}>Earned in {m.xp.programYear} (annual cap)</p>
               <p style={hB({ fontSize: 26, color: T.text, lineHeight: 1.1 })}>{m.xp.programYearEarned.toLocaleString()}<span style={bd({ fontSize: 12, color: T.textMuted })}> / {m.xp.annualCap.toLocaleString()}</span></p>
               <div style={{ marginTop: 7 }}><Bar pct={m.xp.programYearEarned / m.xp.annualCap} color={BRAND.nileLight} /></div>
             </div>
@@ -294,12 +306,15 @@ export default function App() {
     <div style={{ ...card, padding: "9px 14px", marginBottom: 14, display: "flex", gap: 10, alignItems: "flex-start", borderLeft: `3px solid ${isReal ? BRAND.nileLight : T.border}` }}>
       <Database size={14} color={isReal ? BRAND.nileLight : T.textMuted} style={{ marginTop: 2, flexShrink: 0 }} />
       <div>
-        <p style={bd({ fontSize: 12, color: T.textSec })}>{isReal ? `Live Salesforce data · snapshot ${fmtDate(m.asOf)}` : "Demo member · sample data in the Salesforce shape"}</p>
+        <p style={bd({ fontSize: 12, color: T.textSec })}>{isReal ? `Salesforce snapshot · ${fmtDate(m.asOf)}` : "Demo member · sample data in the Salesforce shape"}</p>
         {m.notes.map((n) => <p key={n} style={bd({ fontSize: 11, color: T.textMuted })}>{n}</p>)}
       </div>
     </div>
   ) : null;
 
+  const cta = (item, color) => (item.url
+    ? <a onClick={(e) => e.stopPropagation()} href={item.url} target="_blank" rel="noopener noreferrer" style={h({ fontSize: 11, color, textDecoration: "none", whiteSpace: "nowrap" })}>{item.cta} →</a>
+    : <span style={h({ fontSize: 11, color: T.textMuted, whiteSpace: "nowrap" })}>{item.cta}</span>);
   const UpNext = () => (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><p style={h({ fontSize: 15, color: T.text })}>Up next for you</p><Src kind="personal" /></div>
@@ -310,8 +325,8 @@ export default function App() {
           return (
             <div key={item.id} onClick={() => item.badgeId && (setTab("badges"), setSelectedBadgeId(item.badgeId))} style={{ ...card, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, borderLeft: `3px solid ${color}`, cursor: item.badgeId ? "pointer" : "default" }}>
               <div style={{ width: 34, height: 34, borderRadius: 8, background: `${color}1a`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{p ? <Target size={15} color={color} /> : <Heart size={15} color={color} />}</div>
-              <div style={{ flex: 1, minWidth: 0 }}><p style={h({ fontSize: 13, color: T.text })}>{item.action}</p><p style={bd({ fontSize: 11, color: T.textSec })}>{item.context}</p></div>
-              {item.url ? <a onClick={(e) => e.stopPropagation()} href={item.url} target="_blank" rel="noopener noreferrer" style={h({ fontSize: 11, color, textDecoration: "none", whiteSpace: "nowrap" })}>{item.cta} →</a> : <span style={h({ fontSize: 11, color: T.textMuted, whiteSpace: "nowrap" })}>{item.cta}</span>}
+              <div style={{ flex: 1, minWidth: 0 }}><p style={h({ fontSize: 13, color: T.text })}>{item.action}</p><p style={bd({ fontSize: 11, color: T.textSec })}>{item.context}</p>{!desk && <div style={{ marginTop: 6 }}>{cta(item, color)}</div>}</div>
+              {desk && cta(item, color)}
             </div>
           );
         })}
@@ -451,11 +466,11 @@ export default function App() {
   const Achievements = () => (
     <>
       <p style={h({ fontSize: 15, color: T.text, marginBottom: 12 })}>Achievements</p>
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8 }}>
+      <div style={desk ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(104px, 1fr))", gap: 8 } : { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8 }}>
         {[...m.achievements].sort((a, b) => b.earned - a.earned).map((a) => {
           const Ic = ICONS[a.icon] || Star;
           return (
-            <div key={a.id} style={{ flexShrink: 0, width: 104, padding: "12px 8px", borderRadius: 10, textAlign: "center", background: a.earned ? T.card : T.surface, border: `1px solid ${a.earned ? `${a.color}55` : T.borderLight}`, opacity: a.earned ? 1 : 0.45 }}>
+            <div key={a.id} style={{ flexShrink: 0, width: desk ? "auto" : 104, padding: "12px 8px", borderRadius: 10, textAlign: "center", background: a.earned ? T.card : T.surface, border: `1px solid ${a.earned ? `${a.color}55` : T.borderLight}`, opacity: a.earned ? 1 : 0.45 }}>
               <div style={{ width: 34, height: 34, borderRadius: "50%", margin: "0 auto 6px", display: "flex", alignItems: "center", justifyContent: "center", background: a.earned ? `${a.color}22` : T.borderLight }}>{a.earned ? <Ic size={16} color={a.color} /> : <Lock size={13} color={T.textMuted} />}</div>
               <p style={h({ fontSize: 10, color: T.text, lineHeight: 1.25, marginBottom: 3 })}>{a.name}</p>
               <p style={bd({ fontSize: 9, color: T.textMuted, lineHeight: 1.25 })}>{a.desc}</p>
@@ -468,31 +483,31 @@ export default function App() {
 
   const Dashboard = () => (
     <div style={{ maxWidth: desk ? 1120 : 560, margin: "0 auto", padding: desk ? "24px 28px 40px" : "16px 16px 40px" }}>
-      <DataNotes />
-      <StatusBand />
+      {DataNotes()}
+      {StatusBand()}
       {desk ? (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.65fr) minmax(300px, 1fr)", gap: 24, marginTop: 24, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-            <UpNext />
-            <div><PillarOverview /></div>
-            <div><Achievements /></div>
-            <Stats />
+            {UpNext()}
+            <div>{PillarOverview()}</div>
+            <div>{Achievements()}</div>
+            {Stats()}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <Featured />
-            <Challenges />
-            <BonusXP />
+            {Featured()}
+            {Challenges()}
+            {BonusXP()}
           </div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 16 }}>
-          <Featured />
-          <UpNext />
-          <Challenges />
-          <PillarOverview />
-          <Stats />
-          <BonusXP />
-          <Achievements />
+          {Featured()}
+          {UpNext()}
+          {Challenges()}
+          {PillarOverview()}
+          {Stats()}
+          {BonusXP()}
+          {Achievements()}
         </div>
       )}
     </div>
@@ -517,6 +532,13 @@ export default function App() {
             <div style={{ maxWidth: 220, margin: "14px auto 0" }}><Bar pct={b.progress} color={p.color} /><p style={bd({ fontSize: 11, color: T.textMuted, marginTop: 4 })}>{b.stepsDone} of {b.steps} steps complete</p></div>
           )}
         </div>
+        {!e && b.lockedBy && (
+          <div onClick={() => setSelectedBadgeId(b.lockedBy.id)} style={{ ...card, marginBottom: 12, cursor: "pointer", display: "flex", gap: 10, alignItems: "center", borderLeft: `3px solid ${BRAND.gold}` }}>
+            <Lock size={16} color={BRAND.gold} style={{ flexShrink: 0 }} />
+            <p style={bd({ fontSize: 13, color: T.text, flex: 1 })}>Earn <strong>{b.lockedBy.name}</strong> (Level {b.lockedBy.level}) first. Progress here still counts and is saved.</p>
+            <span style={h({ fontSize: 11, color: BRAND.gold, whiteSpace: "nowrap" })}>Go →</span>
+          </div>
+        )}
         {b.prereq && (
           <div style={{ ...card, marginBottom: 12, borderLeft: `3px solid ${b.prereq.done ? BRAND.nileLight : p.color}` }}>
             <p style={h({ fontSize: 11, color: T.textMuted, letterSpacing: "0.06em", marginBottom: 6 })}>REQUIRED FIRST</p>
@@ -543,13 +565,14 @@ export default function App() {
             </div>
           ))}
         </div>
-        {!e && DEST[b.dest]?.url && <a href={DEST[b.dest].url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: 12, borderRadius: 8, background: BRAND.nile, color: "#fff", ...h({ fontSize: 14, textDecoration: "none" }) }}>Get started</a>}
+        {!e && b.lockedBy && <button onClick={() => setSelectedBadgeId(b.lockedBy.id)} style={{ display: "block", width: "100%", textAlign: "center", padding: 12, borderRadius: 8, border: "none", cursor: "pointer", background: BRAND.nile, color: "#fff", ...h({ fontSize: 14 }) }}>Start with {b.lockedBy.name}</button>}
+        {!e && !b.lockedBy && DEST[b.dest]?.url && <a href={DEST[b.dest].url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: 12, borderRadius: 8, background: BRAND.nile, color: "#fff", ...h({ fontSize: 14, textDecoration: "none" }) }}>Get started</a>}
       </div>
     );
   };
 
   const Badges = () => {
-    if (selectedBadge) return <BadgeDetail />;
+    if (selectedBadge) return BadgeDetail();
     const levels = { 1: ["Level I", "Participate — complete 2 actions"], 2: ["Level II", "Contribute — complete 3 actions"], 3: ["Level III", "Transform — flagship or equivalent, plus 1 follow-up"] };
     return (
       <div style={{ padding: "20px 20px 100px", maxWidth: desk ? 920 : 560, margin: "0 auto" }}>
@@ -571,6 +594,7 @@ export default function App() {
                       <p style={h({ fontSize: 13, color: T.text, marginBottom: 2 })}>{b.name}</p>
                       <p style={bd({ fontSize: 11, color: p.color, marginBottom: 4 })}>{p.label.split(" ")[1]} ▴ {b.xp} XP</p>
                       <Rarity id={b.id} />
+                      {!e && b.lockedBy && b.progress > 0 && <p style={bd({ fontSize: 10, color: BRAND.gold, marginTop: 6 })}>Unlocks after {b.lockedBy.name}</p>}
                       {!e && b.progress > 0 && <div style={{ marginTop: 8 }}><Bar pct={b.progress} color={p.color} height={3} /><p style={bd({ fontSize: 10, color: T.textMuted, marginTop: 3 })}>{Math.round(b.progress * 100)}%</p></div>}
                       {e && <p style={bB({ fontSize: 10, color: BRAND.nileLight, marginTop: 6 })}>Earned ✓</p>}
                     </div>
@@ -586,8 +610,12 @@ export default function App() {
 
   /* ── leaderboard ── */
   const Leaderboard = () => {
-    const [view, setView] = useState("chapter");
-    const roster = [...DEMO_CHAPTER, { id: "you", name: `${m.member.firstName} ${m.member.lastName}`, tier: m.tier.key, xp: m.xp.lifetime, badges: earned.length, trend: "up", isYou: true }].sort((a, b) => b.xp - a.xp);
+    const view = rankView, setView = setRankView;
+    const real = !!chapter;
+    const roster = (real
+      ? chapter.list.map((x) => ({ id: x.member.id, name: `${x.member.firstName} ${x.member.lastName}`, tier: x.tier.key, xp: x.xp.lifetime, badges: x.badges.filter((b) => b.status === "earned").length, nm: x.member.status === "New Member", isYou: x.member.id === m.member.id }))
+      : [...DEMO_CHAPTER, { id: "you", name: `${m.member.firstName} ${m.member.lastName}`, tier: m.tier.key, xp: m.xp.lifetime, badges: earned.length, trend: "up", isYou: true }]
+    ).sort((a, b) => b.xp - a.xp || a.name.localeCompare(b.name));
     const rank = roster.findIndex((r) => r.isYou) + 1;
     const avg = Math.round(roster.reduce((s, r) => s + r.xp, 0) / roster.length);
     return (
@@ -598,7 +626,7 @@ export default function App() {
         </div>
         {view === "chapter" ? (
           <>
-            <div style={{ ...card, padding: "10px 14px", marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}><Info size={14} color={T.textMuted} /><p style={bd({ fontSize: 11, color: T.textMuted })}>Sample chapter roster with your real totals. The live roster connects once Lifetime XP is stored in Salesforce.</p></div>
+            <div style={{ ...card, padding: "10px 14px", marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}><Info size={14} color={T.textMuted} /><p style={bd({ fontSize: 11, color: T.textMuted })}>{real ? `All ${roster.length} current ${chapter.name} members from Salesforce, scored with the same rules. Badges stay low until the self-report forms launch.` : "Sample chapter roster with your real totals. The live roster connects once Lifetime XP is stored in Salesforce."}</p></div>
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
               {[["Your rank", `#${rank}`, `of ${roster.length}`, BRAND.nileLight], ["Chapter avg", avg.toLocaleString(), "XP", T.text], ["Your tier", m.tier.label, `${m.xp.lifetime.toLocaleString()} XP`, m.tier.color]].map(([l, v, s, c]) => (
                 <div key={l} style={{ ...card, flex: 1, padding: 12, textAlign: "center" }}><p style={bd({ fontSize: 11, color: T.textMuted })}>{l}</p><p style={hB({ fontSize: 19, color: c })}>{v}</p><p style={bd({ fontSize: 10, color: T.textMuted })}>{s}</p></div>
@@ -609,9 +637,9 @@ export default function App() {
                 <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: r.isYou ? "11px 16px" : "11px 0", margin: r.isYou ? "0 -16px" : 0, background: r.isYou ? `${BRAND.nile}18` : "transparent", borderTop: i ? `1px solid ${T.borderLight}` : "none" }}>
                   <span style={hB({ fontSize: 13, color: i < 3 ? BRAND.gold : T.textMuted, width: 22, textAlign: "center" })}>{i + 1}</span>
                   <div style={{ width: 30, height: 30, borderRadius: "50%", background: T.surface, border: `2px solid ${TIER_BY_KEY[r.tier].color}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={h({ fontSize: 9, color: T.textSec })}>{r.name.split(" ").map((n) => n[0]).join("")}</span></div>
-                  <div style={{ flex: 1, minWidth: 0 }}><p style={h({ fontSize: 12, color: T.text })}>{r.name}{r.isYou && <span style={bB({ fontSize: 9, color: BRAND.nileLight, marginLeft: 6 })}>YOU</span>}</p><p style={bd({ fontSize: 10, color: T.textMuted })}>{TIER_BY_KEY[r.tier].label} · {r.badges} badges</p></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><p style={h({ fontSize: 12, color: T.text })}>{r.name}{r.isYou && <span style={bB({ fontSize: 9, color: BRAND.nileLight, marginLeft: 6 })}>YOU</span>}</p><p style={bd({ fontSize: 10, color: T.textMuted })}>{TIER_BY_KEY[r.tier].label} · {r.badges} badge{r.badges === 1 ? "" : "s"}{r.nm ? " · New Member" : ""}</p></div>
                   <span style={hB({ fontSize: 13, color: T.text })}>{r.xp.toLocaleString()}</span>
-                  <span style={{ width: 14 }}>{r.trend === "up" ? <ArrowUpRight size={12} color={BRAND.nileLight} /> : r.trend === "down" ? <ArrowDownRight size={12} color="#d0605a" /> : <Minus size={12} color={T.textMuted} />}</span>
+                  {!real && <span style={{ width: 14 }}>{r.trend === "up" ? <ArrowUpRight size={12} color={BRAND.nileLight} /> : r.trend === "down" ? <ArrowDownRight size={12} color="#d0605a" /> : <Minus size={12} color={T.textMuted} />}</span>}
                 </div>
               ))}
             </div>
@@ -643,7 +671,7 @@ export default function App() {
             <div key={`${e.label}-${i}`} style={{ display: "flex", gap: 12, padding: "14px 0", borderTop: i ? `1px solid ${T.borderLight}` : "none", animation: `slideUp 0.3s ease ${Math.min(i, 8) * 0.04}s both` }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: `${c}1f`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Ic size={16} color={c} /></div>
               <div style={{ flex: 1 }}><p style={h({ fontSize: 13, color: T.text })}>{e.label}</p><p style={bd({ fontSize: 11, color: T.textSec })}>{e.kind === "badge" ? `${PILLAR[e.pillar].label} badge` : e.kind === "officer" ? "Officer term" : e.kind === "award" ? "Chapter award" : e.kind === "program" ? "Program attendance (proposal)" : "Foundation giving"} · {e.programYear}{e.capped ? " · annual cap reached" : ""}</p></div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}><p style={bB({ fontSize: 12, color: BRAND.nileLight })}>+{e.xpAwarded} XP</p><p style={bd({ fontSize: 10, color: T.textMuted })}>{ago(e.date, today)}</p></div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}><p style={bB({ fontSize: 12, color: BRAND.nileLight })}>+{e.xpAwarded} XP</p><p style={bd({ fontSize: 10, color: T.textMuted })}>{e.approx ? `${new Date(e.date).getUTCFullYear()}` : ago(e.date, today)}</p></div>
             </div>
           );
         })}
@@ -656,8 +684,8 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text }}>
-      {celebration && <Celebration />}
-      {showRewards && <Rewards />}
+      {celebration && Celebration()}
+      {showRewards && Rewards()}
       <header style={{ background: BRAND.sphinx, padding: "0 20px", display: "flex", justifyContent: "space-between", alignItems: "center", height: 52, position: desk ? "fixed" : "sticky", top: 0, left: 0, right: 0, zIndex: 45 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Shield size={18} color={BRAND.gold} />
@@ -667,7 +695,7 @@ export default function App() {
         </div>
         {!desk && <button onClick={() => setDark(!dark)} aria-label="Toggle theme" style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 6, width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{dark ? <Sun size={15} color="#fff" /> : <Moon size={15} color="#fff" />}</button>}
       </header>
-      {desk && <Sidebar />}
+      {desk && Sidebar()}
       <main style={{ marginLeft: desk ? 210 : 0, paddingTop: desk ? 52 : 0, paddingBottom: desk ? 20 : 70 }}>
         {!desk && (
           <div style={{ padding: "8px 16px", borderBottom: `1px solid ${T.border}`, background: T.card }}>
@@ -678,10 +706,10 @@ export default function App() {
             {testOpen && <div style={{ padding: "8px 0 6px" }}>{TestingPanel()}</div>}
           </div>
         )}
-        <View />
+        {View()}
         <footer style={{ padding: "8px 20px 24px", textAlign: "center" }}><p style={bd({ fontSize: 10, color: T.textMuted })}><FileText size={10} style={{ verticalAlign: "-1px" }} /> Proof of concept · {BADGE_CONFIG.length} badges · rules engine v0.1</p></footer>
       </main>
-      {!desk && <BottomNav />}
+      {!desk && BottomNav()}
     </div>
   );
 }

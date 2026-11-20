@@ -12,7 +12,7 @@
 
 import {
   TIERS, BADGES, PILLARS, PROGRAMS, CONVENTION_EVENT_TYPE, OFFICER_XP, OFFICER_ROLE_TYPE,
-  CHAPTER_AWARD_XP, GIVING_XP, ACHIEVEMENTS, CHALLENGES, ANNUAL_XP_CAP,
+  CHAPTER_AWARD_XP, GIVING_XP, OFFICER_MIN_MONTHS, ACHIEVEMENTS, CHALLENGES, ANNUAL_XP_CAP,
   PROGRAM_YEAR_START_MONTH, POINTS_PER_XP, DEST, FEATURED, PROGRAM_ATTENDANCE_XP,
 } from "../config/program.js";
 
@@ -132,7 +132,9 @@ function evaluateBadges(ctx) {
     const prevDate = prev ? results[prev.id]?.earnedDate : null;
     const earnedDate = status === "earned" ? maxDate(reqDate, prereq?.date, prevDate) : null;
 
-    results[b.id] = { ...b, actions, prereq, status, progress: stepsDone / steps, stepsDone, steps, earnedDate };
+    // lockedBy: the lower badge in this pillar that has to be earned first.
+    const lockedBy = prev && !prevEarned ? { id: prev.id, name: prev.name, level: prev.level } : null;
+    results[b.id] = { ...b, actions, prereq, status, progress: stepsDone / steps, stepsDone, steps, earnedDate, lockedBy };
   }
   return BADGES.map((b) => results[b.id]);
 }
@@ -140,7 +142,7 @@ function evaluateBadges(ctx) {
 /* ── Bonus XP ── */
 function officerTerms(ctx) {
   return ctx.chapterRoles
-    .filter((r) => r.roleType === OFFICER_ROLE_TYPE)
+    .filter((r) => r.roleType === OFFICER_ROLE_TYPE && (r.months ?? 12) >= OFFICER_MIN_MONTHS)
     .flatMap((r) => {
       // One term per 12 months in office (Tyler: repeat terms each earn XP). Minimum 1.
       const terms = Math.max(1, Math.round((r.months || 12) / 12));
@@ -154,12 +156,13 @@ function officerTerms(ctx) {
 }
 
 function chapterAwards(ctx) {
-  const start = toDate(ctx.raw.contact.initiationDate);
+  // Window opens at the New Member date (falls back to initiation) and closes at alumni status.
+  const start = toDate(ctx.raw.contact.newMemberDate || ctx.raw.contact.initiationDate);
   const end = toDate(ctx.raw.contact.alumniDate) || ctx.today;
   return (ctx.raw.chapterAwards || []).flatMap((a) => {
     const rule = CHAPTER_AWARD_XP.find((r) => (a.awardName || "").includes(r.match));
     const d = toDate(a.dateAwarded);
-    // Only awards won while this member was an undergraduate (Tyler's flag).
+    // Only awards won while this member was an undergraduate.
     if (!rule || !d || !start || d < start || d > end) return [];
     return [{ kind: "award", label: `${rule.label} (${d.getUTCFullYear()})`, xp: rule.xp, date: d }];
   });
@@ -170,9 +173,10 @@ function giving(ctx) {
   const y = ctx.today.getUTCFullYear();
   const out = [];
   const firstGiftDate = g.giftLastYear ? new Date(Date.UTC(y - 1, 11, 31)) : g.giftThisYear ? ctx.today : null;
-  if (firstGiftDate) out.push({ kind: "giving", label: "First gift to the Foundation", xp: GIVING_XP.firstGift, date: firstGiftDate });
-  if (g.giftLastYear && g.giftThisYear) out.push({ kind: "giving", label: "Second consecutive year of giving", xp: GIVING_XP.consecutiveYear, date: ctx.today });
-  if (g.societyMember) out.push({ kind: "giving", label: "Society member", xp: GIVING_XP.society, date: ctx.today });
+  // Giving is stored yes/no by calendar year, so dates are the year, not the day (approx).
+  if (firstGiftDate) out.push({ kind: "giving", label: "First gift to the Foundation", xp: GIVING_XP.firstGift, date: firstGiftDate, approx: true });
+  if (g.giftLastYear && g.giftThisYear) out.push({ kind: "giving", label: "Second consecutive year of giving", xp: GIVING_XP.consecutiveYear, date: ctx.today, approx: true });
+  if (g.societyMember) out.push({ kind: "giving", label: "Society member", xp: GIVING_XP.society, date: ctx.today, approx: true });
   return out;
 }
 
@@ -236,7 +240,7 @@ function challengeProgress(ctx, badges, lifetimeXP) {
   return { anchor, timed };
 }
 
-/* ── Program attendance XP (proposal, off unless opts.programXP) ── */
+/* ── Program attendance XP ── */
 function programAttendance(ctx) {
   return PROGRAM_ATTENDANCE_XP.flatMap((rule) => {
     const hits = rule.program === "convention"
@@ -259,9 +263,14 @@ function upNext(badges, ctx, givingEntries) {
     const todo = next.actions.find((a) => !a.done && !a.pending && !a.flag) || next.actions.find((a) => !a.done);
     if (!todo) continue;
     const left = next.need - Math.min(next.actions.filter((a) => a.done).length, next.need);
-    items.push({ kind: "personal", id: `${next.id}-${todo.id}`, pillar: p.key, badgeId: next.id, progress: next.progress, action: todo.text, context: left === 1 ? `1 action from ${next.name}` : `${left} actions from ${next.name}`, dest: todo.dest });
+    // If the member already has this pillar's Level III prerequisite (e.g. attended CA),
+    // say so — the small steps are what stand between them and the top badge.
+    const top = badges.find((b) => b.pillar === p.key && b.level === 3);
+    const headStart = top && top.status !== "earned" && top.prereq?.done && next.level < 3;
+    const ctxLine = left === 1 ? `1 action from ${next.name}` : `${left} actions from ${next.name}`;
+    items.push({ kind: "personal", id: `${next.id}-${todo.id}`, pillar: p.key, badgeId: next.id, progress: next.progress, action: todo.text, context: headStart ? `${ctxLine} · you've already done the hard part of ${top.name}` : ctxLine, headStart: headStart ? top.name : null, dest: todo.dest });
   }
-  items.sort((a, b) => b.progress - a.progress);
+  items.sort((a, b) => (b.headStart ? 1 : 0) - (a.headStart ? 1 : 0) || b.progress - a.progress);
   const top = items.slice(0, 3);
   if (!givingEntries.length && top.length >= 3) top[2] = { kind: "personal", id: "first-gift", pillar: null, progress: 0, action: "Make your first Foundation gift", context: `Earn ${GIVING_XP.firstGift} XP and the First Gift achievement`, dest: "foundation" };
   return top.map((t) => ({ ...t, cta: DEST[t.dest]?.label || "Learn more", url: DEST[t.dest]?.url || null }));
@@ -283,7 +292,7 @@ export function buildMemberSummary(raw, opts = {}) {
   const officer = officerTerms(ctx);
   const awards = chapterAwards(ctx);
   const givingEntries = giving(ctx);
-  const attendance = opts.programXP ? programAttendance(ctx) : [];
+  const attendance = opts.programXP === false ? [] : programAttendance(ctx);
   const ledger = buildLedger([...badgeEntries, ...attendance, ...officer, ...awards, ...givingEntries]);
 
   const lifetimeXP = ledger.reduce((s, e) => s + e.xpAwarded, 0);
@@ -327,12 +336,11 @@ export function buildMemberSummary(raw, opts = {}) {
     return m;
   }, {});
   const best = Object.entries(months).sort((a, b) => b[1] - a[1])[0];
-  const init = toDate(raw.contact.initiationDate);
+  const init = toDate(raw.contact.initiationDate || raw.contact.newMemberDate);
   const recentBadge = earned.filter((b) => b.earnedDate && today - b.earnedDate <= 30 * DAY).sort((a, b) => b.earnedDate - a.earnedDate)[0];
 
   const notes = [];
   if (opts.includeStaff) notes.push("Counting staff and facilitator attendance (testing only).");
-  if (opts.programXP) notes.push("Program attendance XP is on (proposal, testing only).");
   if (opts.today) notes.push(`Viewing as of ${iso(today)} (testing date).`);
   if (!(raw.selfReports || []).length) notes.push("Self-reported actions arrive once the Formstack forms are built.");
 

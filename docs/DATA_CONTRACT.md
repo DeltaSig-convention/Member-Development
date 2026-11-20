@@ -60,7 +60,7 @@ Salesforce stays the source of truth. The dashboard only reads.
 
 - **Attendance counts only when** `Attended__c = true`, not cancelled, and `Attendee_Type__c` is Attendee or Guest. Staff, Facilitator and Speaker registrations don't count.
 - **Convention** is matched on `Event_Type__c = "Convention"`, not program type (see findings).
-- **Officer XP:** one award per 12 months in office (minimum one). President 200, any `Exec_Role__c` 150, other Collegiate Chapter Officer roles 100. Volunteer and alumni roles earn nothing yet.
+- **Officer XP:** one award per 12 months in office (minimum one), only for roles held 3+ months. President 200, any `Exec_Role__c` 150, other Collegiate Chapter Officer roles 100. Volunteer and alumni roles earn nothing yet.
 - **Chapter award XP** only if the award date falls between the member's initiation and alumni dates.
 - **Annual XP cap:** 3,000 per program year (July 1 – June 30). Lifetime XP sets the tier and never drops; current points = lifetime XP − redemptions.
 - A badge is earned only after the level below it in the same pillar is earned.
@@ -74,14 +74,23 @@ Salesforce stays the source of truth. The dashboard only reads.
 
 ## Findings from the Quincy Elliott pull (Nov 20)
 
-5. **Our most involved undergrad earns 100 XP.** Quincy attended LI, CA, CEI, LEAD Weekend and Day of Service, but most badge actions are self-reported, and Level III badges need Levels I and II first. Until the forms exist, he holds the prerequisites for three Level III badges and zero badges. The proposal switch (`progxp=1`) awards XP for program attendance on its own, which takes him to 675 XP (Silver).
-6. **LEAD Weekend isn't mapped to any badge action.** It's an HQ program with its own program type (`LEAD Weekend`).
+5. **Our most involved undergrad earned 100 XP under the badge-only rules.** Decision (Nov 20): attending a program now earns XP on its own — CA, CEI, LI and Convention 150, Day of Service 50, chapter retreats and Courage & Culture 25. Quincy is now at 800 XP (Silver).
+6. **LEAD Weekend earns no attendance XP** (decision Nov 20). Officer Training Sessions are also typed `LEAD Weekend` in Salesforce, so they're excluded too.
 7. **No officer roles on record.** His IFC presidency is a campus role, so it would arrive through the self-report form (Active Learner: "hold a leadership position in a campus organization"). Whether he holds a chapter office isn't in Salesforce.
-8. **Award date vs. membership date.** Beta Mu won Chapter of Distinction on Jan 13, 2024, two days before Quincy's Active Member date (Jan 15) and three months after his New Member date (Oct 15, 2023). Decide whether the award window starts at New Member or Active Member.
+8. **Award window starts at the New Member date** (decision Nov 20). Beta Mu's Jan 13, 2024 Chapter of Distinction now counts for Quincy's class. Other national awards (Ritual, Community Engagement, Operational Excellence and similar) earn 50 XP as a placeholder.
 9. **Registered but didn't attend.** He registered for the 2025 Convention and didn't attend. The engine now counts "Convention Bound" only for an upcoming registration or an attended Convention.
+
+## Findings from the Beta Mu pull (Nov 20, all 46 current members)
+
+10. **LMS passes are mostly required new member modules.** 29 of 46 members have 3–10 passed modules from their new member period. Decision (Nov 20): required modules count.
+11. **Officer terms need at least 3 months** to earn XP (decision Nov 20). Example: a Vice President record for Jan 5–31, 2026 (0 months) no longer earns 150 XP.
+12. **Exec_Role__c is true for Secretary and Sergeant-at-Arms.** Confirmed correct (Nov 20): they are executive board positions and earn 150.
+13. **Suspension history.** Several members have Suspended → Active Member status changes. The engine uses the first Active Member date as initiation, which is correct, but Flows shouldn't reset anything on reactivation.
+14. **Only 4 of 46 gave last year, none this year.** Giving XP will be rare for undergraduates.
 
 ## Open questions
 
+- Founding-member catch-up for seniors (log pre-launch actions): parked until after launch planning.
 - What field marks Foundation **Society** membership? `Lifetime_Level__c` is null for Andrew; confirm it's the right field or name the correct one.
 - Do the giving fields on Contact include Foundation gifts, Fraternity gifts, or both?
 - Featured programs and challenges: see `docs/CONTENT_MODEL.md` for the proposed `Gamification_Content__c` object.

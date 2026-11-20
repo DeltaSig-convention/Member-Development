@@ -72,6 +72,7 @@ export const DEST = {
   conv: { label: "Convention 2027", url: "https://convention.deltasig.org" },
   cc: { label: "Courage & Culture", url: "https://deltasig.org/courage-and-culture" },
   foundation: { label: "Give now", url: "https://give.deltasig.org" },
+  volunteer: { label: "Volunteer", url: "https://deltasig.org/volunteer" },
   vpmx: { label: "Talk to your VPMX", url: null },
   campus: { label: "Get involved on campus", url: null },
 };
@@ -238,11 +239,23 @@ export const BADGES = [
 /* Bonus XP — officer terms, chapter awards, Foundation giving. */
 export const OFFICER_XP = { president: 200, execBoard: 150, other: 100 };
 export const OFFICER_ROLE_TYPE = "Collegiate Chapter Officer";
+/* A role must last at least this many months to earn officer XP (decision Nov 20, 2026).
+   Current roles start earning once they pass the minimum. */
+export const OFFICER_MIN_MONTHS = 3;
 
+/* Chapter awards count when the award date falls between the member's
+   New Member date and alumni date. Values below Next Era are placeholders. */
 export const CHAPTER_AWARD_XP = [
   { match: "Pyramid of Excellence", label: "Pyramid of Excellence", xp: 150 },
   { match: "Chapter of Distinction", label: "Chapter of Distinction", xp: 100 },
   { match: "Next Era", label: "Next Era Award", xp: 75 },
+  { match: "Ritual Award", label: "Loren Mall Ritual Award", xp: 50 },
+  { match: "Community Engagement", label: "Community Engagement Award", xp: 50 },
+  { match: "Operational Excellence", label: "Operational Excellence Award", xp: 50 },
+  { match: "Educational Attainment", label: "Educational Attainment Award", xp: 50 },
+  { match: "Academic Achievement", label: "Academic Achievement Award", xp: 50 },
+  { match: "Outstanding Service", label: "Outstanding Service Award", xp: 50 },
+  { match: "Harris Award", label: "Robert R. Harris Recruitment Award", xp: 50 },
 ];
 
 export const GIVING_XP = { firstGift: 100, consecutiveYear: 75, society: 150 };
@@ -328,7 +341,7 @@ export const FEATURED = [
     id: "alumni-volunteer", priority: 3, show: ["2026-08-01", "2027-07-31"], audience: { status: "alumni" },
     eyebrow: "For alumni", title: "Volunteer with Delta Sig",
     sub: "Advise a chapter, facilitate a program or mentor an undergraduate.",
-    url: "https://deltasig.org", cta: "Get involved",
+    url: DEST.volunteer.url, cta: "Get involved",
   },
   {
     id: "convention-2027", priority: 4, show: ["2026-08-01", "2027-07-31"], audience: { status: "all" }, fallback: true,
@@ -363,15 +376,14 @@ export const CHALLENGES = {
   previewDays: 21, // a timed challenge appears this many days before it starts
 };
 
-/* PROPOSAL — XP for attending a program, separate from badges.
-   Off by default. Turn on with the "Program attendance XP" testing switch
-   (or ?progxp=1) to compare. See the Quincy Elliott test case. */
+/* XP for attending a program, separate from badges (approved Nov 20, 2026).
+   Counts only registrations marked Attended with Attendee Type = Attendee/Guest.
+   LEAD Weekend and officer training don't earn attendance XP. */
 export const PROGRAM_ATTENDANCE_XP = [
   { program: PROGRAMS.careerAccelerator, xp: 150 },
   { program: PROGRAMS.cei, xp: 150 },
   { program: PROGRAMS.leadershipInstitute, xp: 150 },
   { program: "convention", xp: 150, label: "Convention" },
-  { program: "LEAD Weekend", xp: 75 },
   { program: PROGRAMS.dayOfService, xp: 50 },
   { program: PROGRAMS.chapterRetreat, xp: 25 },
   { program: PROGRAMS.courageAndCulture, xp: 25, label: "Courage & Culture program" },

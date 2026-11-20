@@ -83,10 +83,9 @@ Every testing option lives in the URL, so you can send someone a link to the exa
 
 | Option | URL | What it does |
 |---|---|---|
-| Member | `member=quincy` / `andrew` / (blank = demo) | Whose record to show |
+| Member | `member=quincy`, `andrew`, any Beta Mu Contact ID, or blank for the demo | Whose record to show |
 | Pretend today is | `date=2027-04-12` | Rotates featured programs and challenges as if it were that day |
 | Count staff attendance | `staff=1` | Counts staff and facilitator registrations (testing only) |
-| Program attendance XP | `progxp=1` | Turns on the proposal to award XP for attending programs |
 | Show content sources | `sources=1` | Labels each card Personal, Org-wide or Targeted |
 
-Example: `?member=quincy&date=2027-04-12&progxp=1&sources=1` shows Quincy during CTW Week with the program-XP proposal on.
+Example: `?member=quincy&date=2027-04-12&sources=1` shows Quincy during CTW Week with source labels on.
